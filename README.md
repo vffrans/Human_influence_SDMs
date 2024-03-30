@@ -1,5 +1,5 @@
 # Human_influence_SDMs
-This is the R project folder for the article entitled, "Gaps and opportunities in modeling human influence on species distributions," by Veronica F. Frans and Jianguo Liu. For further information, please see the corresponding research article in Nature Ecology and Evolution.
+This is the R project folder for the article entitled, "Gaps and opportunities in modeling human influence on species distributions," by Veronica F. Frans and Jianguo Liu. For further information, please see the corresponding research article in *Nature Ecology & Evolution*.
 
 This project was run using R version 4.3.0. All scripts are in .rmd format. PDF versions of the scripts are also enclosed. 
 
