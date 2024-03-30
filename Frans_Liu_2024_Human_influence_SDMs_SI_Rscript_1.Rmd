@@ -1,0 +1,2394 @@
+---
+title: 'Human Influence in SDMs: Literature Review (Part I)'
+author: "Veronica F. Frans (verofrans@gmail.com)"
+date: 'July 20, 2023'
+output:
+  pdf_document:
+    fig_height: 5
+    fig_width: 8
+    keep_tex: yes
+    number_sections: yes
+    toc: yes
+    toc_depth: 4
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    toc_depth: 4
+  word_document:
+    toc: yes
+    toc_depth: '4'
+header-includes:
+- \usepackage{pdflscape}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \fancyhead[CO,CE]{Supporting Information}
+- \fancyhead[LO,LE]{Frans and Liu 2024}
+- \fancyhead[RO,RE]{Human Influence in SDMs}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, cache.comments = TRUE,
+                      warning= FALSE, message = FALSE, tinytex.verbose = TRUE)
+```
+
+\newpage
+
+# Summary
+
+This is the first R script of the literature review and synthesis for the article entitled, "Gaps and opportunities in modeling human influence on species distributions in the Anthropocene," by Veronica F. Frans and Jianguo Liu.
+
+We examine the Web of Science search results and screen abstracts to prepare for full article screening, review, and the qualitative synthesis.
+
+Here, in Part I of the qualitative synthesis, the following is accomplished:
+
+(1) Upload of Web of Science search results and cleaning of records
+(2) Abstract screening
+(3) Export of articles assigned for full article screening
+
+Afterwards, the full article screening is filled out in an Excel spreadsheet and the data for the qualitative synthesis is extracted from all accepted articles. The data from the review are then processed in R Scripts Parts II to V.
+
+# R setup
+
+We are using R version 4.3.0 (R Core Team 2023).
+
+## Libraries
+
+Load libraries
+
+```{r packages, results='hide', message=FALSE, warning=FALSE}
+# load libraries
+  library("bibliometrix") # for biblio-analytics
+  library("revtools")     # for reviewing abstracts
+  library("dplyr")        # for table manipulations
+  library("scales")       # for scales and formatting
+  library("kableExtra")   # for table viewing in Rmarkdown
+  library("tidyr")        # for table manipulations
+  library("plyr")         # for table manipulations
+  library("tidyverse")    # for graphics/table management
+  library("ggplot2")      # for graphics
+  library("RColorBrewer") # for graphics
+```
+
+## Directories
+
+Create and name directories for file retrieval and storage. The primary directory is the folder where the R project file `hum_sdm_litrv_r.Rproj` is stored.
+
+```{r directories, warning=FALSE, results='hide'}
+
+# create image folder and its directory
+  dir.create(paste0("images"),recursive = TRUE)
+  image.dir <- paste0("images\\")
+
+# create data folder and its directory
+  dir.create(paste0("data"),recursive = TRUE)
+  data.dir <- paste0("data\\")
+  
+# bibtex file directories
+  bib.dir <- paste0(data.dir, "saved_recs_FINAL\\")
+```
+
+# ISI Web of Science search
+
+The articles to review were selected under the following search terms in *ISI Web of Science* (https://www.webofscience.com/):
+
+For **all** SDM papers up to the end of year 2021.
+
+__*TS=(("species distribution model*" OR "environmental niche model*" OR "species niche model*" OR "bioclimatic niche model*" OR "habitat suitability model*" OR "ecological niche model*" OR "habitat model*") ) AND DT=(Article) AND PY=(1900-2021)*__
+
+The document type was "articles" only, in order to avoid review articles and book chapters (any remaining reviews or book chapters are removed manually).
+
+This yielded **12,854** articles.
+
+This search was done on September 14, 2022.
+
+The ISI Web of Science results (all data except citations) were saved in bibtex format (.bib) for analysis here in R.
+
+## Upload Web of Science records
+
+Upload records and convert to readable files
+
+```{r upload_records, results='hide', warning=FALSE, message=FALSE}
+# all SDM-human papers
+# load all records
+  bibs <- paste0(bib.dir,list.files(bib.dir))
+
+# conversions
+  bibs.df <- convert2df(c(bibs),dbsource = "isi",format = "bibtex")
+```
+Save as CSV for use in the PRISMA summary.
+
+```{r save_prisma_bib, results='hold', eval=FALSE}
+# save for PRISMA framework
+  write.csv(bibs.df, paste0(data.dir,"bibtex_dataframe_RAW.csv"),row.names=FALSE)
+```
+
+Get counts.
+
+```{r count_arts_dups}
+# get new number of articles
+  paste('number of articles from Web of Science:',nrow(bibs.df))
+
+# get number of duplicates
+  paste('number of duplicates:',nrow(bibs.df[duplicated(bibs.df$TI),]))
+```
+
+Remove duplicates
+
+```{r remove_dups}
+# get duplicates
+  dups <- (bibs.df[duplicated(bibs.df$TI),])
+  
+# remove duplicates
+  bibs2.df <- bibs.df[!duplicated(bibs.df$TI), ]
+
+# get new number of articles
+  paste('Final number of articles without duplicates:',nrow(bibs2.df))
+```
+
+Save as CSV for use in the PRISMA summary.
+
+```{r prisma_dups_save, eval=FALSE}
+# save for PRISMA framework
+  write.csv(bibs2.df, paste0(data.dir,"bibtex_dataframe_duplicates_removed.csv"),
+            row.names=FALSE)
+```
+
+# Abstract screening
+
+The 12,846 articles' abstracts were screened to accept research articles that modeled species' distributions AND acknowledged human influence on species' distributions. Such an acknowledgement could be direct (e.g., mentioning humans, people, anthropogenic drivers, etc.) or indirect (e.g., mentioning land cover or land use change, etc.).
+
+The abstracts were screened using the `revtools` package, which provides a GUI for screening and loads the results to a data frame.
+
+## Data cleanup
+
+```{r load_background, echo=FALSE}
+### PRERUN DATA IS LOADED HERE SINCE THE ABSTRACT SCREENING IS A GUI ###
+
+### FOR A LOT OF THE CHUNKS, EVAL=FALSE DUE TO THE SCREENING GUI PROCESS ###
+
+# load previously-saved R-data file
+  load("SDMs_human_lit_review_I.RData")
+
+### THIS IS NOT VISIBLE IN THE PRINTED PDF ###
+```
+
+Duplicates need to be removed, and also we need to remove any 2022 articles.
+
+```{r abs_reload}
+# reload articles to revtools bibliography format for screening
+  abs.df <- read_bibliography(bibs)
+  nrow(abs.df)
+```
+
+Remove articles published in 2022 (early access date of 2021 is why they were included in the original Web of Science search results).
+
+```{r abs_remove}
+# remove 2022 articles
+  abs.df <- abs.df[!abs.df$year==2022,]
+  
+# get count
+  nrow(abs.df)
+```
+
+Remove duplicates.
+
+```{r abs_duplicates}
+# remove duplicates from this dataset
+  dups.df <- find_duplicates(abs.df, match_variable = "title")
+  abs2.df <- extract_unique_references(abs.df, dups.df)
+  
+# get count
+  nrow(abs2.df)
+```
+
+There are actually *12,683* articles to be screened once duplicates and year 2022 articles are removed.
+
+Next, sort the data.
+
+```{r abs_sort}
+# Sort the data by year, followed by the title (most realistic of an online search)
+  abs2.df$year <- as.integer(abs2.df$year)
+  abs2.df <- abs2.df[order(-abs2.df$year, abs2.df$title),]
+
+# Add a column to give it a unique ID
+  abs2.df$UID <- seq.int(nrow(abs2.df))
+```
+
+Here is the list of all column names:
+
+```{r abs_colnames}
+# get column names
+  options(width=85) #ensure width
+  colnames(abs2.df)
+```
+
+Save as CSV for use in the PRISMA summary.
+
+```{r prisma_save, eval=FALSE}
+# save for PRISMA framework
+  write.csv(abs2.df, paste0(data.dir,"abstracts_dataframe_duplicates_removed.csv"),
+            row.names=FALSE)
+```
+
+## Abstract screening: round 1
+
+Next, screen the articles. A GUI will pop up for manual screening.
+
+```{r abs1, eval=FALSE}
+# screen abstracts
+  scr_abs <- screen_abstracts(abs2.df)
+
+# updated screening (9-14-2022)
+  scr_abs <- screen_abstracts(scr_abs)
+  scr_abs_1 <- scr_abs #duplicate for editing
+```
+
+While screening 300 abstracts, a list of key words were written down, to help filter the abstracts. We then use these key words to accept abstracts, and then the remaining papers are once again filtered manually.
+
+Note that this process only helps to broaden what is included, but no articles are being excluded by this text-mining procedure. Any articles that are not selected by this process still have to be handled manually and rejected manually. All accepted articles, whether manually or mined, are also ultimately read in the full article screening process. Thus, all 12,683 abstracts and/or full articles were read at some point in the review process.
+
+```{r abs1_count_first}
+# get number of abstracts for each
+  count(scr_abs, "screened_abstracts")
+```
+
+*122* out of 300 articles were selected in this round.
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs1_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'agricultur*', 'aquacultur*','hunting','viticultur*','hunted',
+               'plantation*','livestock','game bird*','palm oil','cropland',
+               #human influence in general
+               'anthropogenically-transformed','urban*','anthropogenic impact*',
+               'human impact*',
+               #human degradation or pollution
+               'pollutant*','insecticide*','pesticide*','land abandonment','deforest*',
+               'landuse change','land use change','landcover change',
+               'land cover change','habitat conversion', 'land conversion',
+               'habitat degradation','oil spill*',
+               #human-wildlife conflict
+               'collision','human-wildlife conflict','human interaction*',
+               'road kill','roadkill',
+               #artificial structures
+               'artificial surface*', 'hydropower', 'artificial light',
+               'artificial night light'
+               #policy interventions
+               )
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs1_fill, eval=FALSE}
+# search and append
+  scr_abs_1$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               #search column
+                                               scr_abs_1$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_1$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs1_count_last}
+# get number of abstracts for each
+  count(scr_abs_1, "screened_abstracts")
+```
+
+With these key terms learned during screening, *2,133* new articles were selected, including *11* that were originally excluded.
+
+## Abstract screening: round 2
+
+Next, screen abstracts again manually, and see what other terms come up through the next 300 papers (2723 screened total).
+
+```{r abs2, eval=FALSE}
+# updated screening (9-14-2022)
+  scr_abs_2 <- screen_abstracts(scr_abs_1)
+  scr_abs_3 <- scr_abs_2  #duplicate for editing
+```
+
+Get new summary.
+
+```{r abs2_count_first}
+# get number of abstracts for each
+  count(scr_abs_2, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs2_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               
+               #human influence in general
+               'anthropogenic change', 'human use', 'anthropogenic activit*', 
+               'shipping', 'anthropogenic global change', 'human activit*', 
+               'human population', 'anthropogenic stressor*', 'human footprint*', 
+               'anthropogenic driver*', 'human pressure*', 'synanthrop*', 
+               'anthropic intervention', 'anthropogenic cause*','anthropogenic habitat',
+               'human-dominated', 
+               #human degradation or pollution
+               'exploitation', 'exploited', 
+               #human-wildlife conflict
+               'domestic animal*', 
+               #artificial structures
+               'highway*', '^mines', 
+               #policy interventions
+               'reintroduc*', 'relocat*', 'translocat*'
+               )
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs2_fill, eval=FALSE}
+# search and append
+  scr_abs_3$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               #search column
+                                               scr_abs_3$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_3$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs2_count_last}
+# get number of abstracts for each
+  count(scr_abs_3, "screened_abstracts")
+```
+
+## Abstract screening: round 3
+
+Next, screen another 300 abstracts manually again manually, and see what other terms come up for filtering more of the articles with text mining.
+
+```{r abs3, eval=FALSE}
+# updated screening (9-15-2022)
+  scr_abs_4 <- screen_abstracts(scr_abs_3)
+  scr_abs_5 <- scr_abs_4 #duplicate for editing
+```
+
+```{r abs3_count_first}
+# get number of abstracts for each
+  count(scr_abs_4, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs3_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'fishing','human water use','cattle','whaling',
+               'market demand*','anthropic pressure*','harvest*',
+               'aquarium','grazing','anthropogenic pressure*',
+               'global demand',
+               '^logging','reservoir*',
+               #human influence in general
+               'land use','globalization','globalisation',
+               'land cover', 'landcover', #indirectly related to human influence
+               'distance from village*','anthropogenic variable*',
+               #human degradation or pollution
+               'reclamation','human development', #'habitat loss',
+               'anthropogenic litter','land use change*',
+               #human-wildlife conflict
+               'entanglement','wind energy development','human persecution',
+               'habitat encroachment',
+               #artificial structures
+               'developed landscape*'
+               #policy interventions
+               #'restoration'
+               )
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs3_fill, eval=FALSE}
+# search and append
+  scr_abs_5$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               #search column
+                                               scr_abs_5$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_5$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs3_count_last}
+# get number of abstracts for each
+  count(scr_abs_5, "screened_abstracts")
+```
+
+## Abstract screening: round 4
+
+Next, screen another 300 abstracts manually again, and see what other terms come up for filtering more of the articles with text mining.
+
+```{r abs4, eval=FALSE}
+# updated screening (9-14-2022)
+  scr_abs_6 <- screen_abstracts(scr_abs_5)
+  scr_abs_7 <- scr_abs_6 #duplicate for editing
+```
+
+```{r abs4_count_first}
+# get number of abstracts for each
+  count(scr_abs_6, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs4_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               #'food security','commercially important',
+               #'socio-economic importan*',
+               #human influence in general
+               'human related activit*', 'human-related activit*',
+               'human-mediated','farmland','anthropogenic and',
+               'anthropogenic ecological change*','human settlement*',
+               'village','villages','anthropogenic expansion*',
+               'human infrastructure*','land-use change*',
+               #human degradation or pollution
+               'abandoned field*','abandoned area*','developed area*'
+               #human-wildlife conflict
+               
+               #artificial structures
+               
+               #policy interventions
+               
+               )
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs4_fill, eval=FALSE}
+# search and append
+  scr_abs_7$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               #search column
+                                               scr_abs_7$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_7$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs4_count_last}
+# get number of abstracts for each
+  count(scr_abs_7, "screened_abstracts")
+```
+
+## Abstract screening: round 5
+
+```{r abs5, eval=FALSE}
+# updated screening (9-17-2022)
+  scr_abs_8 <- screen_abstracts(scr_abs_7)
+  scr_abs_9 <- scr_abs_8 #duplicate for editing
+```
+
+```{r abs5_count_first}
+# get number of abstracts for each
+  count(scr_abs_8, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs5_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'rice field*','public land',
+               #human influence in general
+               'public use*',#'import*'
+               'human influence index','closeness to ports',
+               'domestic pig census','human-related change*',
+               #human degradation or pollution
+               'land-use data','land use data','land cover data','landcover data',
+               'human-altered landscape*','built environment*','built-up area',
+               'habitat destruction','land-use variable*','human-caused habitat loss',
+               'human-induced global environmental change',
+               #human-wildlife conflict
+               'human-carnivore conflict*',
+               #artificial structures
+               '^city','^cities',
+               #policy interventions
+               'effectiveness of protected areas','effectiveness of PA',
+               'eradicat*','forest management practice*','ability of PAs to conserve',
+               'park boundar*','nonreserved area*'#,'management stress',
+               )
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs5_fill, eval=FALSE}
+# search and append
+  scr_abs_9$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               #search column
+                                               scr_abs_9$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_9$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs5_count_last}
+# get number of abstracts for each
+  count(scr_abs_9, "screened_abstracts")
+```
+
+## Abstract screening: round 6
+
+```{r abs6, eval=FALSE}
+# updated screening (9-17-2022)
+  scr_abs_10 <- screen_abstracts(scr_abs_9)
+  scr_abs_11 <- scr_abs_10 #duplicate for editing
+```
+
+```{r abs6_count_first}
+# get number of abstracts for each
+  count(scr_abs_10, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs6_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'crop area*',
+               #human influence in general
+               'human-induced variables','land-use realism',
+               'Socio-Economic Connectedness ','human behavior',
+               #human degradation or pollution
+               'disturbed environment*','ski slope*','clear-cut logging',
+               'human modification','abandoned land*','abandonment','^mining activit*',
+               #human-wildlife conflict
+               'Human-sun bear conflict','human propert*','conflict area*',
+               'conflict hotspot*',
+               #artificial structures
+               'shelterbelt*', 'human-made habitats','farmstead'
+               #policy interventions
+               )
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs6_fill, eval=FALSE}
+# search and append
+  scr_abs_11$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               #search column
+                                               scr_abs_11$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_11$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs6_count_last}
+# get number of abstracts for each
+  count(scr_abs_11, "screened_abstracts")
+```
+
+## Abstract screening: round 7
+
+```{r abs7, eval=FALSE}
+# updated screening (9-19-2022)
+  scr_abs_12 <- screen_abstracts(scr_abs_11)
+  scr_abs_13 <- scr_abs_12 #duplicate for editing
+```
+
+```{r abs7_count_first}
+# get number of abstracts for each
+  count(scr_abs_12, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs7_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'abstraction','demand for','commercial logging',
+               #'food security','commercially important',
+               #'socio-economic importan*',
+               #'social value*',
+               #human influence in general
+               'human and natural variable*','human and natural predictor*',
+               'landscape-Use','land-use pattern','anthropogenic factor*',
+               'land-cover','natural *land*','National Land Cover Data',
+               '*NLCD*','forest availability',
+               #human degradation or pollution
+               'oil development','gas development','*restored habitat',
+               'human-caused',
+               #human-wildlife conflict
+               'distance to anthropogenic','density of vehicle roads',
+               'road density','density of roads','avoid* road*','road* avoid*',
+               'avoid* of road*','avoid* of trail*','avoid* trail*',
+               'attract* to road*', 'attract* to trail*',
+               #artificial structures
+  
+               #policy interventions
+               'undeveloped','human intervention*'
+               #,'management stress',
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs7_fill, eval=FALSE}
+# search and append
+  scr_abs_13$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               #search column
+                                               scr_abs_13$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_13$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs7_count_last}
+# get number of abstracts for each
+  count(scr_abs_13, "screened_abstracts")
+```
+
+We realized that the `grepl()` default is `ignore.case=FALSE`. This means that the search terms were CASE SENSITIVE. Prior to proceeding to another round of abstract screening, all terms from round 1 thru 7 will be rerun to the current dataset `scr_abs_13` to remove case sensitivity.
+
+```{r abs7_term_redo}
+abs_terms <- c(#terms related to...
+  
+               ### round 1
+               
+               #resources
+               'agricultur*', 'aquacultur*','hunting','viticultur*','hunted',
+               'plantation*','livestock','game bird*','palm oil','cropland',
+               #human influence in general
+               'anthropogenically-transformed','urban*','anthropogenic impact*',
+               'human impact*',
+               #human degradation or pollution
+               'pollutant*','insecticide*','pesticide*',
+               'land abandonment','deforest*',
+               'landuse change','land use change','landcover change',
+               'land cover change','habitat conversion', 'land conversion',
+               'habitat degradation','oil spill*',
+               #human-wildlife conflict
+               'collision','human-wildlife conflict','human interaction*',
+               'road kill','roadkill',
+               #artificial structures
+               'artificial surface*', 'hydropower', 'artificial light',
+               'artificial night light',
+               
+               ### round 2
+               
+               #human influence in general
+               'anthropogenic change', 'human use','anthropogenic activit*',
+               'shipping','anthropogenic global change','human activit*',
+               'human population','anthropogenic stressor*','human footprint*',
+               'anthropogenic driver*','human pressure*','synanthrop*',
+               'anthropic intervention','anthropogenic cause*','anthropogenic habitat',
+               'human-dominated',
+               #human degradation or pollution
+               'exploitation','exploited',
+               #human-wildlife conflict
+               'domestic animal*',
+               #artificial structures
+               'highway*','^mines',
+               #policy interventions
+               'reintroduc*','relocat*','translocat*',
+               
+               ### round 3
+               
+               #resources
+               'fishing','human water use','cattle','whaling',
+               'market demand*','anthropic pressure*','harvest*',
+               'aquarium','grazing','anthropogenic pressure*',
+               'global demand',
+               '^logging','reservoir*',
+               #human influence in general
+               'land use','globalization','globalisation',
+               'land cover', 'landcover', #indirectly related to human influence
+               'distance from village*','anthropogenic variable*',
+               #human degradation or pollution
+               'reclamation','human development', #'habitat loss',
+               'anthropogenic litter','land use change*',
+               #human-wildlife conflict
+               'entanglement','wind energy development','human persecution',
+               'habitat encroachment',
+               #artificial structures
+               'developed landscape*',
+               
+               ### round 4
+               
+               #human influence in general
+               'human related activit*', 'human-related activit*',
+               'human-mediated','farmland','anthropogenic and',
+               'anthropogenic ecological change*','human settlement*',
+               'village','villages','anthropogenic expansion*',
+               'human infrastructure*','land-use change*',
+               #human degradation or pollution
+               'abandoned field*','abandoned area*','developed area*',
+               
+               ### round 5
+               
+               #resources
+               'rice field*','public land',
+               #human influence in general
+               'public use*',
+               'human influence index','closeness to ports',
+               'domestic pig census','human-related change*',
+               #human degradation or pollution
+               'land-use data','land use data','land cover data','landcover data',
+               'human-altered landscape*','built environment*','built-up area',
+               'habitat destruction','land-use variable*','human-caused habitat loss',
+               'human-induced global environmental change',
+               #human-wildlife conflict
+               'human-carnivore conflict*',
+               #artificial structures
+               '^city','^cities',
+               #policy interventions
+               'effectiveness of protected areas','effectiveness of PA',
+               'eradicat*','forest management practice*','ability of PAs to conserve',
+               'park boundar*','nonreserved area*',
+               
+               ### round 6
+               
+               #resources
+               'crop area*',
+               #human influence in general
+               'human-induced variables','land-use realism',
+               'Socio-Economic Connectedness ','human behavior',
+               #human degradation or pollution
+               'disturbed environment*','ski slope*','clear-cut logging',
+               'human modification','abandoned land*','abandonment','^mining activit*',
+               #human-wildlife conflict
+               'Human-sun bear conflict','human propert*','conflict area*',
+               'conflict hotspot*',
+               #artificial structures
+               'shelterbelt*', 'human-made habitats','farmstead',
+               
+               ### round 7
+               
+               #resources
+               'abstraction','demand for','commercial logging',
+               #human influence in general
+               'human and natural variable*','human and natural predictor*',
+               'landscape-Use','land-use pattern','anthropogenic factor*',
+               'land-cover','natural *land*','National Land Cover Data',
+               '*NLCD*','forest availability',
+               #human degradation or pollution
+               'oil development','gas development','*restored habitat',
+               'human-caused',
+               #human-wildlife conflict
+               'distance to anthropogenic','density of vehicle roads',
+               'road density','density of roads','avoid* road*','road* avoid*',
+               'avoid* of road*','avoid* of trail*','avoid* trail*',
+               'attract* to road*', 'attract* to trail*',
+               #policy interventions
+               'undeveloped','human intervention*'
+               )
+```
+
+```{r abs7_redo_fill, eval=FALSE}
+# make a new copy
+  scr_abs_14 <- scr_abs_13
+
+# search and append
+  scr_abs_14$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_14$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_14$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs7_redo_count_final}
+# get number of abstracts for each
+  count(scr_abs_14, "screened_abstracts")
+```
+
+## Abstract screening: round 8
+
+```{r abs8, eval=FALSE}
+# updated screening (9-19-2022)
+  scr_abs_15 <- screen_abstracts(scr_abs_14)
+  scr_abs_16 <- scr_abs_15 #duplicate for editing
+```
+
+```{r abs8_count_first}
+# get number of abstracts for each
+  count(scr_abs_15, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs8_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'timber production',
+               #'food security','commercially important',
+               #'socio-economic importan*',
+               'social value*',
+               #human influence in general
+               'ballast','^cities','orchard*','pasture*','human-induced',
+               'companies that import','imported by compan*','company import*',
+               'companies import','human occup*','land-use','human-pressure*',
+               #human degradation or pollution
+               'landscape chang*','chang* landscape*',
+               #human-wildlife conflict
+               'poach*','access* roads', 'access to road*',
+               'road* access*', 'industrial cent*','power development',
+               'wind energy',
+               #artificial structures
+               'anthropogenic structure*'#,
+               #policy interventions
+               #'reconstruction'
+               )
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs8_fill, eval=FALSE}
+# search and append
+  scr_abs_16$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_16$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_16$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs8_count_last}
+# get number of abstracts for each
+  count(scr_abs_16, "screened_abstracts")
+```
+
+## Abstract screening: round 9
+
+```{r abs9, eval=FALSE}
+# updated screening (9-19-2022)
+  scr_abs_17 <- screen_abstracts(scr_abs_16)
+  scr_abs_18 <- scr_abs_17 #duplicate for editing
+```
+
+```{r abs9_count_first}
+# get number of abstracts for each
+  count(scr_abs_17, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs9_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               #'food security','commercially important',
+               #'socio-economic importan*',
+               #human influence in general
+               'anthropogenic* introduc*','forest edge*','changes that human*',
+               'changes that people','human influence*',
+               'anthropogenic environmental change*','human incidence*',
+               'international travel','freight transport*',
+               #'travel',
+               #human degradation or pollution
+               'pitlake', '^pit lake','anthropogenic stress',' human-made',
+               #human-wildlife conflict
+               'roadside','tourism development'
+               #artificial structures
+               #policy interventions
+               #'reconstruction'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs9_fill, eval=FALSE}
+# search and append
+  scr_abs_18$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_18$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_18$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs9_count_last}
+# get number of abstracts for each
+  count(scr_abs_18, "screened_abstracts")
+```
+
+## Abstract screening: round 10
+
+```{r abs10, eval=FALSE}
+# updated screening (9-20-2022)
+  scr_abs_19 <- screen_abstracts(scr_abs_18)
+  scr_abs_20 <- scr_abs_19 #duplicate for editing
+```
+
+```{r abs10_count_first}
+# get number of abstracts for each
+  count(scr_abs_19, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs10_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               #'farming',
+               #human influence in general
+               'anthropo* parameter*','anthropo* feature*',
+               #human degradation or pollution
+               'pollution','pollutant*',
+               '^escape*','air traffic',
+               #human-wildlife conflict
+               'distance* from road*','distance* from *trail*','distance* from highway*',
+               'distance* from settlement*','distance* from village*','fisher* bycatch',
+               #'bycatch',
+               'ship strike*', 'anthro* sound*',
+               #artificial structures
+               #policy interventions
+               #'interven*',
+               'anthropo* *nourishment','renourishment event',
+               'anthropic restoration','uninterrupt* area*','forest thinning',
+               'thin* forest*','habitat management','manag* habitat*'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs10_fill, eval=FALSE}
+# search and append
+  scr_abs_20$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_20$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_20$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs10_count_last}
+# get number of abstracts for each
+  count(scr_abs_20, "screened_abstracts")
+```
+
+## Abstract screening: round 11
+
+Screen another 300 articles and add new terms. 
+
+```{r abs11, eval=FALSE}
+# updated screening (9-20-2022)
+  scr_abs_21 <- screen_abstracts(scr_abs_20)
+  scr_abs_22 <- scr_abs_21 #duplicate for editing
+```
+
+```{r abs11_count_first}
+# get number of abstracts for each
+  count(scr_abs_21, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs11_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'shade tree*','coffee farm*',
+               #human influence in general
+               'anthrop* dominated','anthrop*-dominated',
+               'human dominated','human-dominated',
+               'dominated by human*','dominated by people',
+               'anthrop* indices','anthrop* index',
+               #human degradation or pollution
+               #human-wildlife conflict
+               'barrier effect','main road*',
+               #artificial structures
+               #policy interventions
+               'vector control','manage* factor*',
+               'protect* area*'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs11_fill, eval=FALSE}
+# search and append
+  scr_abs_22$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_22$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_22$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs11_count_last}
+# get number of abstracts for each
+  count(scr_abs_22, "screened_abstracts")
+```
+
+After screening the abstracts, We found that the wildcard symbol (*) being used in the `grepl()` command was not registering. We are thus re-applying all the terms again, so that the wildcards can be applied.
+
+```{r abs11_term_redo}
+abs_terms <- c(#terms related to...
+  
+               ### round 1
+               
+               #resources
+               'agricultur*', 'aquacultur*','hunting','viticultur*','hunted',
+               'plantation*','livestock','game bird*','palm oil','cropland',
+               #human influence in general
+               'anthropogenically-transformed','urban*','anthropogenic impact*',
+               'human impact*',
+               #human degradation or pollution
+               'pollutant*','insecticide*','pesticide*',
+               'land abandonment','deforest*',
+               'landuse change','land use change','landcover change',
+               'land cover change','habitat conversion', 'land conversion',
+               'habitat degradation','oil spill*',
+               #human-wildlife conflict
+               'collision','human-wildlife conflict','human interaction*',
+               'road kill','roadkill',
+               #artificial structures
+               'artificial surface*', 'hydropower', 'artificial light',
+               'artificial night light',
+               
+               ### round 2
+               
+               #human influence in general
+               'anthropogenic change', 'human use','anthropogenic activit*',
+               'shipping','anthropogenic global change','human activit*',
+               'human population','anthropogenic stressor*','human footprint*',
+               'anthropogenic driver*','human pressure*','synanthrop*',
+               'anthropic intervention','anthropogenic cause*','anthropogenic habitat',
+               'human-dominated',
+               #human degradation or pollution
+               'exploitation','exploited',
+               #human-wildlife conflict
+               'domestic animal*',
+               #artificial structures
+               'highway*','^mines',
+               #policy interventions
+               'reintroduc*','relocat*','translocat*',
+               
+               ### round 3
+               
+               #resources
+               'fishing','human water use','cattle','whaling',
+               'market demand*','anthropic pressure*','harvest*',
+               'aquarium','grazing','anthropogenic pressure*',
+               'global demand',
+               '^logging','reservoir*',
+               #human influence in general
+               'land use','globalization','globalisation',
+               'land cover', 'landcover', #indirectly related to human influence
+               'distance from village*','anthropogenic variable*',
+               #human degradation or pollution
+               'reclamation','human development', #'habitat loss',
+               'anthropogenic litter','land use change*',
+               #human-wildlife conflict
+               'entanglement','wind energy development','human persecution',
+               'habitat encroachment',
+               #artificial structures
+               'developed landscape*',
+               
+               ### round 4
+               
+               #human influence in general
+               'human related activit*', 'human-related activit*',
+               'human-mediated','farmland','anthropogenic and',
+               'anthropogenic ecological change*','human settlement*',
+               'village','villages','anthropogenic expansion*',
+               'human infrastructure*','land-use change*',
+               #human degradation or pollution
+               'abandoned field*','abandoned area*','developed area*',
+               
+               ### round 5
+               
+               #resources
+               'rice field*','public land',
+               #human influence in general
+               'public use*',
+               'human influence index','closeness to ports',
+               'domestic pig census','human-related change*',
+               #human degradation or pollution
+               'land-use data','land use data','land cover data','landcover data',
+               'human-altered landscape*','built environment*','built-up area',
+               'habitat destruction','land-use variable*','human-caused habitat loss',
+               'human-induced global environmental change',
+               #human-wildlife conflict
+               'human-carnivore conflict*',
+               #artificial structures
+               '^city','^cities',
+               #policy interventions
+               'effectiveness of protected areas','effectiveness of PA',
+               'eradicat*','forest management practice*','ability of PAs to conserve',
+               'park boundar*','nonreserved area*',
+               
+               ### round 6
+               
+               #resources
+               'crop area*',
+               #human influence in general
+               'human-induced variables','land-use realism',
+               'Socio-Economic Connectedness ','human behavior',
+               #human degradation or pollution
+               'disturbed environment*','ski slope*','clear-cut logging',
+               'human modification','abandoned land*','abandonment','^mining activit*',
+               #human-wildlife conflict
+               'Human-sun bear conflict','human propert*','conflict area*',
+               'conflict hotspot*',
+               #artificial structures
+               'shelterbelt*', 'human-made habitats','farmstead',
+               
+               ### round 7
+               
+               #resources
+               'abstraction','demand for','commercial logging',
+               #human influence in general
+               'human and natural variable*','human and natural predictor*',
+               'landscape-Use','land-use pattern','anthropogenic factor*',
+               'land-cover','natural *land*','National Land Cover Data',
+               '*NLCD*','forest availability',
+               #human degradation or pollution
+               'oil development','gas development','*restored habitat',
+               'human-caused',
+               #human-wildlife conflict
+               'distance to anthropogenic','density of vehicle roads',
+               'road density','density of roads','avoid* road*','road* avoid*',
+               'avoid* of road*','avoid* of trail*','avoid* trail*',
+               'attract* to road*', 'attract* to trail*',
+               #policy interventions
+               'undeveloped','human intervention*',
+               
+               ### round 8
+               
+               #resources
+               'timber production',
+               'social value*',
+               #human influence in general
+               'ballast','^cities','orchard*','pasture*','human-induced',
+               'companies that import','imported by compan*','company import*',
+               'companies import','human occup*','land-use','human-pressure*',
+               #human degradation or pollution
+               'landscape chang*','chang* landscape*',
+               #human-wildlife conflict
+               'poach*','access* roads', 'access to road*',
+               'road* access*', 'industrial cent*','power development',
+               'wind energy',
+               #artificial structures
+               'anthropogenic structure*',
+               
+               ### round 9
+
+               #human influence in general
+               'anthropogenic* introduc*','forest edge*','changes that human*',
+               'changes that people','human influence*',
+               'anthropogenic environmental change*','human incidence*',
+               'international travel','freight transport*',
+               #'travel',
+               #human degradation or pollution
+               'pitlake', '^pit lake','anthropogenic stress',' human-made',
+               #human-wildlife conflict
+               'roadside','tourism development',
+               
+               ### round 10
+               
+               #human influence in general
+               'anthropo* parameter*','anthropo* feature*',
+               #human degradation or pollution
+               'pollution','pollutant*',
+               '^escape*','air traffic',
+               #human-wildlife conflict
+               'distance* from road*','distance* from *trail*','distance* from highway*',
+               'distance* from settlement*','distance* from village*','fisher* bycatch',
+               #'bycatch',
+               'ship strike*', 'anthro* sound*',
+               #artificial structures
+               #policy interventions
+               #'interven*',
+               'anthropo* *nourishment','renourishment event',
+               'anthropic restoration','uninterrupt* area*','forest thinning',
+               'thin* forest*','habitat management','manag* habitat*',
+               
+               ### round 11
+               
+               #resources
+               'shade tree*','coffee farm*',
+               #human influence in general
+               'anthrop* dominated','anthrop*-dominated',
+               'human dominated','human-dominated',
+               'dominated by human*','dominated by people',
+               'anthrop* indices','anthrop* index',
+               #human degradation or pollution
+               #human-wildlife conflict
+               'barrier effect','main road*',
+               #artificial structures
+               #policy interventions
+               'vector control','manage* factor*',
+               'protect* area*'
+               
+               )
+```
+
+Fill in rows as 'selected' if they have these terms.
+
+```{r abs11_redo_fill, eval=FALSE}
+# copy 
+  scr_abs_23 <- scr_abs_22
+
+# search and append
+  scr_abs_23$screened_abstracts <- ifelse(#search string
+                                              #NEW REGEX condition added (wildcards)
+                                         grepl(paste0(glob2rx(abs_terms), collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_23$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_23$screened_abstracts)
+```
+
+```{r abs11_redo_count}
+# get number of abstracts for each
+  count(scr_abs_23, "screened_abstracts")
+```
+
+## Abstract screening: round 12
+
+Screen another 300 articles and add new terms. 
+
+```{r abs12, eval=FALSE}
+# updated screening (9-20-2022)
+  scr_abs_24 <- screen_abstracts(scr_abs_23)
+  scr_abs_25 <- scr_abs_24 #duplicate for editing
+```
+
+```{r abs12_count_first}
+# get number of abstracts for each
+  count(scr_abs_24, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs12_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'widely traded','widely-traded',
+               #human influence in general
+               'dam removal.*','and anthropogenic\\.',
+               'human* interfer.*',
+               #human degradation or pollution
+               'N emission.*',
+               #human-wildlife conflict
+               'road mortality','road-kill.*','wind farm.*',
+               #artificial structures
+               #policy interventions
+               'rely on intensive manage.*','rely on manage.*',
+               'habitat.* alteration', #alter.* habitat.*',
+               'habitat change.* from restoration'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs12_fill, eval=FALSE}
+# search and append
+  scr_abs_25$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_25$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_25$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs12_count_last}
+# get number of abstracts for each
+  count(scr_abs_25, "screened_abstracts")
+```
+
+## Abstract screening: round 13
+
+Screen another 300 articles and add new terms. 
+
+```{r abs13, eval=FALSE}
+# updated screening (9-23-2022)
+  scr_abs_26 <- screen_abstracts(scr_abs_25)
+  scr_abs_27 <- scr_abs_26 #duplicate for editing
+```
+
+```{r abs13_count_first}
+# get number of abstracts for each
+  count(scr_abs_26, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs13_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'fishery catch',
+               #human influence in general
+               'accessible to human.*','anthropogenic predictor.*',
+               'anthropogenic parameter.*','anthropogenic extinction',
+               'anthropogenic feature.*','demand.* for timber',
+               'preindustrial period','industrialization','industrialisation',
+               #human degradation or pollution
+               'anthropogenic degradation','edge.* of fields','field edge.*',
+               #human-wildlife conflict
+               'conflict with human.*','human safety',
+               'human disturbed', 'human-disturbed','disturbed by human.*',
+               'anthropo.* disturb.*',
+               #artificial structures
+               'Ski-resort.*','ski resort.*'
+               #policy interventions
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs13_fill, eval=FALSE}
+# search and append
+  scr_abs_27$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_27$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_27$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs13_count_last}
+# get number of abstracts for each
+  count(scr_abs_27, "screened_abstracts")
+```
+
+## Abstract screening: round 14
+
+Screen another 300 articles and add new terms. 
+
+```{r abs14, eval=FALSE}
+# updated screening (9-23-2022)
+  scr_abs_28 <- screen_abstracts(scr_abs_27)
+  scr_abs_29 <- scr_abs_28 #duplicate for editing
+```
+
+```{r abs14_count_first}
+# get number of abstracts for each
+  count(scr_abs_28, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs14_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'planting area.*','intentional.* introduc.*',
+               'trade pattern.*',
+               #human influence in general
+               'socioeconomic factor.*',
+               #human degradation or pollution
+               'industrial source.*','municipal source.*',
+               'anthropogenic fire.*', 'human induced threat.*','human-induced threat.*',
+               'threat.* by human.*','anthrop.* threat.*',
+               #human-wildlife conflict
+               #artificial structures
+               'non-ecological','nonecological',
+               #policy interventions
+               'introduction site.*',
+               'occurs in protected areas'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs14_fill, eval=FALSE}
+# search and append
+  scr_abs_29$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_29$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_29$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs14_count_last}
+# get number of abstracts for each
+  count(scr_abs_29, "screened_abstracts")
+```
+
+## Abstract screening: round 15
+
+Screen another 300 articles and add new terms. 
+
+```{r abs15, eval=FALSE}
+# updated screening (9-23-2022)
+  scr_abs_30 <- screen_abstracts(scr_abs_29)
+  scr_abs_31 <- scr_abs_30 #duplicate for editing
+```
+
+```{r abs15_count_first}
+# get number of abstracts for each
+  count(scr_abs_30, "screened_abstracts")
+```
+
+```{r error_correction, echo=FALSE, eval=FALSE}
+# fix a small error
+# scr_abs_30$screened_abstracts[grepl('Espirito Santo, Brazil',scr_abs_30$abstract)] <- "excluded"
+# 
+# scr_abs_30$screened_abstracts[grepl('Espirito Santo, Brazil',scr_abs_30$abstract)] 
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs15_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'silvicultur*',
+               #human influence in general
+               'socio-economic covariate.*','socioeconomic covariate.*',
+               'accidentally introduced','accidentally-introduced',
+               'unintentionally transported','transport hub',
+               'inadvertent.* introduc.*',
+               #human degradation or pollution
+               'post-mining landscape',
+               #human-wildlife conflict
+               'intentional feeding','unintentional feeding',
+               'transport pressure',
+               #artificial structures
+               'dam construction','^on road.*',
+               #policy interventions
+               'prescribed fire','fire suppression',
+               'euthan*'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs15_fill, eval=FALSE}
+# search and append
+  scr_abs_31$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_31$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_31$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs15_count_last}
+# get number of abstracts for each
+  count(scr_abs_31, "screened_abstracts")
+```
+
+## Abstract screening: round 16
+
+Screen another 300 articles and add new terms. 
+
+```{r abs16, eval=FALSE}
+# updated screening (9-24-2022)
+  scr_abs_32 <- screen_abstracts(scr_abs_31)
+  scr_abs_33 <- scr_abs_32 #duplicate for editing
+```
+
+```{r abs16_count_first}
+# get number of abstracts for each
+  count(scr_abs_32, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs16_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               '^hunted area',
+               #human influence in general
+               'human presence','humans created niches','human economic activity',
+               #human degradation or pollution
+               'due to energy development',
+               #human-wildlife conflict
+               'fishery has the potential to compete with','collector.* interest',
+               'distance to road',
+               #artificial structures
+               'settlements','night-time light.*','nighttime light','artificial light',
+               'ecological impact of hydroelectric power plants',
+               #policy interventions
+               'effectiveness of conservation areas',
+               'expanding protected areas',
+               'measures to protect has led to',
+               'protection measures',
+               'conservation and economic development'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs16_fill, eval=FALSE}
+# search and append
+  scr_abs_33$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_33$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_33$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs16_count_last}
+# get number of abstracts for each
+  count(scr_abs_33, "screened_abstracts")
+```
+
+## Abstract screening: round 17
+
+Screen another 300 articles and add new terms. 
+
+```{r abs17, eval=FALSE}
+# updated screening (9-25-2022)
+  scr_abs_34 <- screen_abstracts(scr_abs_33)
+  scr_abs_35 <- scr_abs_34 #duplicate for editing
+```
+
+```{r abs17_count_first}
+# get number of abstracts for each
+  count(scr_abs_34, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs17_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'threat from fisheries','fisher.* threat',
+               #human influence in general
+               'human and spatial variable.*','human and environment.* variable.*',
+               'human and spatial predictor','human and environent.* predictor',
+               'human-related variable','human related variable','human variable',
+               'human-related predictor','human related predictor','human predictor',
+               'human induced pressure','human-induced pressure','exacerbated by human',
+               'human threat.*',
+               #human degradation or pollution
+               #human-wildlife conflict
+               #'stray cat','stray dog','domestic cat','domestic dog',
+               #' human and dog densities'
+               #artificial structures
+               #policy interventions
+               'during ecological restoration.*',
+               'wolf (Canis lupus) restoration'
+               #'species restoration'
+               #'assisted migration'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs17_fill, eval=FALSE}
+# search and append
+  scr_abs_35$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_35$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_35$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs17_count_last}
+# get number of abstracts for each
+  count(scr_abs_35, "screened_abstracts")
+```
+
+## Abstract screening: round 18
+
+Screen another 300 articles and add new terms. 
+
+```{r abs18, eval=FALSE}
+# updated screening (9-25-2022)
+  scr_abs_36 <- screen_abstracts(scr_abs_35)
+  scr_abs_37 <- scr_abs_36 #duplicate for editing
+```
+
+```{r abs18_count_first}
+# get number of abstracts for each
+  count(scr_abs_36, "screened_abstracts")
+```
+
+```{r error_correction2, echo=FALSE, eval=FALSE}
+# fix a small error
+# need to search for human and shark (thought we missed something, but didn't)
+ # scr_abs_37$abstract[grepl('human cost.*shark'|'shark.*human cost',scr_abs_37$abstract)]
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs18_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'distribution of fisher.*',#'international trade',
+               #human influence in general
+               'species was imported',
+               #human degradation or pollution
+               'energy development variable.*','distance to oil/gas road.*',
+               'human landscape alteration',
+               #human-wildlife conflict
+               #artificial structures
+               'public garden.*',
+               'domestic garden.*',
+               #policy interventions
+               'protected area coverage'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs18_fill, eval=FALSE}
+# search and append
+  scr_abs_37$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_37$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_37$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs18_count_last}
+# get number of abstracts for each
+  count(scr_abs_37, "screened_abstracts")
+```
+
+## Abstract screening: round 19
+
+Screen another 300 articles and add new terms. 
+
+```{r abs19, eval=FALSE}
+# updated screening (9-26-2022)
+  scr_abs_38 <- screen_abstracts(scr_abs_37)
+  scr_abs_39 <- scr_abs_38 #duplicate for editing
+```
+
+```{r abs19_count_first}
+# get number of abstracts for each
+  count(scr_abs_38, "screened_abstracts")
+```
+
+In this round, many of the papers are very specific. Not really common phrases being used here.
+
+```{r error_correction3, echo=FALSE, eval=FALSE}
+# fix a small error
+  #scr_abs_39$abstract[grepl('biocontrol agent',scr_abs_39$abstract)]
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs19_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'olive cultivation','prevalence in vineyards',
+               #human influence in general
+               'human introduc.*','biocontrol agent',
+               'anthropogenic landscape.*',
+               'anthropogenic vector.*','anthropic','role played by human.*',
+               #human degradation or pollution
+               'amount of cleared land','marine litter','microplastic',
+               'mesoplastics','macrolitter','anthropogenic modification',
+               #human-wildlife conflict
+               'coincid.* with human','dive tourism','conflict.* with human.*',
+               #artificial structures
+               #'hydropeaking',
+               'major harbor.*',
+               'airport.*',
+               'entry through ports',
+               #policy interventions
+               'manipulated organism*',
+               'political division.*',
+               'Water Framework Directive','sensitive to forest management'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs19_fill, eval=FALSE}
+# search and append
+  scr_abs_39$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_39$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_39$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs19_count_last}
+# get number of abstracts for each
+  count(scr_abs_39, "screened_abstracts")
+```
+
+## Abstract screening: round 20
+
+Screen another 300 articles and add new terms. 
+
+```{r abs20, eval=FALSE}
+# updated screening (9-27-2022)
+  scr_abs_40 <- screen_abstracts(scr_abs_39)
+  scr_abs_41 <- scr_abs_40 #duplicate for editing
+```
+
+```{r abs20_count_first}
+# get number of abstracts for each
+  count(scr_abs_40, "screened_abstracts")
+```
+
+In this round, many of the papers are very specific. Not really common phrases being used here.
+
+```{r error_correction4, echo=FALSE, eval=FALSE}
+# fix a small error
+  #test <- scr_abs_41[grepl('biological control',scr_abs_41$abstract),]
+  #test$abstract
+  #test <- test[is.na(test$screened_abstracts),]
+  #test$abstract
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs20_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'live animal trade','non-cultivated area.*',
+               #human influence in general
+               'anthropogenic process.*',
+               'anthropological change',
+               #human degradation or pollution
+               'forest cover change','seafloor dredging','coastal intervention',
+               'avoid grazed land',
+               #human-wildlife conflict
+               'inhabit people\'s homes',
+               #artificial structures
+               #policy interventions
+               'biological control'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs20_fill, eval=FALSE}
+# search and append
+  scr_abs_41$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_41$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_41$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs20_count_last}
+# get number of abstracts for each
+  count(scr_abs_41, "screened_abstracts")
+```
+
+## Abstract screening: round 21
+
+Screen another 300 articles and add new terms. 
+
+```{r abs21, eval=FALSE}
+# updated screening (9-28-2022; 10-19-2022)
+  scr_abs_42 <- screen_abstracts(scr_abs_41) # screened 100 and then took a break
+  scr_abs_43 <- screen_abstracts(scr_abs_42)
+  scr_abs_44 <- scr_abs_43 #duplicate for editing
+```
+
+```{r abs21_count_first}
+# get number of abstracts for each
+  count(scr_abs_43, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs21_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'resources by humans','20th-century logging',
+               #human influence in general
+               'human arrival',
+               #human degradation or pollution
+               'land degradation','mine edge','^mining','^mines',
+               #'fragmentation',
+               #human-wildlife conflict
+               'culling','culled',
+               #artificial structures
+               'energy generation development','green infrastructure',
+               #policy interventions
+               'fish are stocked','stocking'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs21_fill, eval=FALSE}
+# search and append
+  scr_abs_44$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_44$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_44$screened_abstracts)
+
+```
+
+Get new summary.
+
+```{r abs21_count_last}
+# get number of abstracts for each
+  count(scr_abs_44, "screened_abstracts")
+```
+
+## Abstract screening: round 22
+
+Screen another 300 articles and add new terms. 
+
+```{r abs22, eval=FALSE}
+# updated screening (10-25-2022)
+  scr_abs_45 <- screen_abstracts(scr_abs_44)
+  scr_abs_46 <- scr_abs_45 #duplicate for editing
+```
+
+```{r abs22_count_first}
+# get number of abstracts for each
+  count(scr_abs_45, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs22_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'cultivation intensity',#'logging',
+               #human-wildlife conflict
+               'seismic survey',
+               #artificial structures
+               'roads,',
+               'dyke','paved road',
+               #policy interventions
+               'response to habitat restoration'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs22_fill, eval=FALSE}
+# search and append
+  scr_abs_46$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_46$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_46$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs22_count_last}
+# get number of abstracts for each
+  count(scr_abs_46, "screened_abstracts")
+```
+
+## Abstract screening: round 23
+
+Screen another 300 articles and add new terms. 
+
+```{r abs23, eval=FALSE}
+# updated screening (10-26-2022)
+  scr_abs_47 <- screen_abstracts(scr_abs_46)
+  scr_abs_48 <- scr_abs_47 #duplicate for editing
+```
+
+```{r abs23_count_first}
+# get number of abstracts for each
+  count(scr_abs_47, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs23_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'land resource use',
+               #human influence in general
+               'human access','socioecological framework',
+               'human-environment relationship','human means',
+               'arrive by human','human assisted','human-assisted',
+               #human degradation or pollution
+               'development project',
+               #human-wildlife conflict
+               'pet store',
+               #artificial structures
+               'powerline',
+               #policy interventions
+               'restoration success','restoration design','after restoration'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs23_fill, eval=FALSE}
+# search and append
+  scr_abs_48$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_48$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_48$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs23_count_last}
+# get number of abstracts for each
+  count(scr_abs_48, "screened_abstracts")
+```
+
+## Abstract screening: round 24
+
+Screen another 300 articles and add new terms. 
+
+```{r abs24, eval=FALSE}
+# updated screening (10-26-2022)
+  scr_abs_49 <- screen_abstracts(scr_abs_48)
+  scr_abs_50 <- scr_abs_49 #duplicate for editing
+```
+
+```{r abs24_count_first}
+# get number of abstracts for each
+  count(scr_abs_49, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs24_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               #human influence in general
+               'land-cover data',
+               #human degradation or pollution
+               '^mining activit*','trawling impact',
+               #human-wildlife conflict
+               'cost of conflict resolution','human-cougar conflict',
+               'resource utilization with human','co-occurrence of human',
+               #artificial structures
+               #policy interventions
+               #'flow management',
+               'restorations strateg','restoration strateg'
+               )
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs24_fill, eval=FALSE}
+# search and append
+  scr_abs_50$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_50$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_50$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs24_count_last}
+# get number of abstracts for each
+  count(scr_abs_50, "screened_abstracts")
+```
+
+## Abstract screening: round 25
+
+Screen another 300 articles and add new terms. 
+
+```{r abs25, eval=FALSE}
+# updated screening (10-26-2022)
+  scr_abs_51 <- screen_abstracts(scr_abs_50)
+  scr_abs_52 <- scr_abs_51 #duplicate for editing
+```
+
+```{r abs25_count_first}
+# get number of abstracts for each
+  count(scr_abs_51, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs25_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'pre-clearing',#'forest cover',
+               #human influence in general
+               'introduced in cities','traded pets','socioeconomic condition',
+               #human degradation or pollution
+               'disturbed by human',
+               #human-wildlife conflict
+               #artificial structures
+               'distance to watercourses',
+               #policy interventions
+               'restoration performance','indicators of restoration',
+               'regulated by dam','sluices','introducing species','pleistocene rewilding'
+               )
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs25_fill, eval=FALSE}
+# search and append
+  scr_abs_52$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_52$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_52$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs25_count_last}
+# get number of abstracts for each
+  count(scr_abs_52, "screened_abstracts")
+```
+
+## Abstract screening: round 26
+
+Screen another 300 articles and add new terms. 
+
+```{r abs26, eval=FALSE}
+# updated screening (10-30-2022)
+  scr_abs_53 <- screen_abstracts(scr_abs_52)
+  scr_abs_54 <- scr_abs_53 #duplicate for editing
+```
+
+```{r abs26_count_first}
+# get number of abstracts for each
+  count(scr_abs_53, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs26_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'geographic expansion of cultivated populations',
+               #human influence in general
+               'anthropogenic land','socioeconomic variable',
+               'human and historic variables','impact of humans',
+               'social factor',
+               #human degradation or pollution
+               'development and population','land clearing',
+               #human-wildlife conflict
+               'anthropogenic mortality',
+               #artificial structures
+               'density of road','human-modified',
+               #policy interventions
+               'historical land management','MPA zoning',
+               'with irrigation','without irrigation','distance to protected area'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs26_fill, eval=FALSE}
+# search and append
+  scr_abs_54$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_54$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_54$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs26_count_last}
+# get number of abstracts for each
+  count(scr_abs_54, "screened_abstracts")
+```
+
+## Abstract screening: round 27
+
+Screen another 300 articles and add new terms. 
+
+```{r abs27, eval=FALSE}
+# updated screening (10-30-2022)
+  scr_abs_55 <- screen_abstracts(scr_abs_54)
+  scr_abs_56 <- scr_abs_55 #duplicate for editing
+```
+
+```{r abs27_count_first}
+# get number of abstracts for each
+  count(scr_abs_55, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs27_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'cultivated/naturalised population','cultivated population',
+               #human influence in general
+               #human degradation or pollution
+               'land transformation',
+               #human-wildlife conflict
+               #artificial structures
+               #policy interventions
+               'human-managed','natural-like fishways'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs27_fill, eval=FALSE}
+# search and append
+  scr_abs_56$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_56$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_56$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs27_count_last}
+# get number of abstracts for each
+  count(scr_abs_56, "screened_abstracts")
+```
+
+## Abstract screening: round 28
+
+Screen last 300 articles and add new terms. 
+
+```{r abs28, eval=FALSE}
+# updated screening (10-30-2022)
+  scr_abs_57 <- screen_abstracts(scr_abs_56)
+  scr_abs_57 <- screen_abstracts(scr_abs_57) # resuming after a break
+  scr_abs_58 <- scr_abs_57 #duplicate for editing
+```
+
+```{r abs28_count_first}
+# get number of abstracts for each
+  count(scr_abs_57, "screened_abstracts")
+```
+
+Next, make a list of terms that were key words from the "selected" articles in this round.
+
+```{r abs28_terms}
+abs_terms <- c(#terms related to...
+               #resources
+               'coffee presence',
+               #human influence in general
+               'introduction risk area','maritime port','major cities',
+               #human degradation or pollution
+               #human-wildlife conflict
+               #artificial structures
+               #policy interventions
+               'manipulated by','manipulation by',
+               'stand density','afforestation',
+               'mowing','conservation-dependent'
+               )
+
+```
+
+Fill in rows as 'selected' if they have these terms (this doesn't affect the papers already included manually, but it may affect papers manually excluded; i.e., sensitivity is increased).
+
+```{r abs28_fill, eval=FALSE}
+# search and append
+  scr_abs_58$screened_abstracts <- ifelse(#search string
+                                         grepl(paste0(abs_terms, collapse = "|"),
+                                               # NEW condition added
+                                               ignore.case = TRUE,
+                                               #search column
+                                               scr_abs_58$abstract),
+                                         #fill row in designated column
+                                         'selected', scr_abs_58$screened_abstracts)
+```
+
+Get new summary.
+
+```{r abs28_count_last}
+# get number of abstracts for each
+  count(scr_abs_58, "screened_abstracts")
+```
+
+# Abstract Screening Summary
+
+Make copies and separate table
+
+```{r screen_tables}
+# copy final abstract screening result
+  screened_final <- scr_abs_58
+
+# separate by yes vs no
+  screened_yes <- screened_final[screened_final$screened_abstracts=='selected',]
+  screened_no <- screened_final[screened_final$screened_abstracts=='excluded',]
+```
+
+Get summaries for PRISMA framework
+
+```{r prisma_sums, results='hold'}
+# summary for PRISMA
+  paste('Total articles in WoS search up to 2021:', nrow(abs.df))
+  paste('Total duplicates removed:', nrow(abs.df)-nrow(abs2.df))
+  paste('Total articles screened:', nrow(screened_final))
+  paste('Total articles selected:', nrow(screened_yes)) 
+  paste('Total articles excluded:', nrow(screened_no))
+  paste('Percent articles selected:',
+        round((nrow(screened_yes)/nrow(screened_final))*100,2),'%')
+  paste('Percent articles excluded:',
+        round((nrow(screened_no)/nrow(screened_final))*100,2),'%')
+```
+
+Next, save as CSV.
+
+```{r save_screening, eval=FALSE}
+# save as CSV
+  write.csv(screened_final, paste0(data.dir,"screened_final.csv"),row.names=FALSE)
+  write.csv(screened_yes, paste0(data.dir,"screened_yes.csv"),row.names=FALSE)
+  write.csv(screened_no, paste0(data.dir,"screened_no.csv"),row.names=FALSE)
+```
+
+
+# Setting up for full article review
+
+Next, we will go through each of the selected **5177** articles from abstract screening (files from `screened_yes.csv`) to determine whether human predictors are being used in the SDMs. Accepted full articles for the synthesis will require that **human predictors are at least within the SDM training stage**. This is a critical point, as some papers may list human predictors in their model methods, but will use human predictors post-hoc for e.g., masking predictions of distributions without human influence (such as masking out urban areas). This full article review stage will also include the review of any supplementary materials, as methods are sometimes described there, instead.
+
+For this, a new CSV will be made, with only the selected articles and the following data fields:
+
+- uid
+- year
+- title
+- author
+- journal
+- doi
+
+&nbsp;
+
+```{r export_data, eval=FALSE}
+
+# Create a new table with only UID, year, title, author, journal, and DOI.
+  full_screen  <- subset(screened_yes,
+                         select=c('uid','year','title','author','journal','doi'))
+
+# add a column for use when screening full articles
+  full_screen$relevant <- ''
+  
+# Re-order the columns to move UID to the front
+  full_screen <- full_screen[,c('uid','year','title','author','journal','doi','relevant')]
+  
+# Sort the data by uid (originally uid is most recent year, followed by the title)
+  full_screen <- full_screen[order(full_screen$uid),]
+
+# rewrite DOI to an HTML link
+  #(note that some of these will be NA, so new HTML will be manually added if relevant)
+  full_screen$doi <- paste0('http://doi.org/',full_screen$doi)
+  
+# Save as a csv
+  write.csv(full_screen, paste0(data.dir,"full_screening.csv"),row.names=FALSE)
+```
+
+```{r screen_preview}
+# show example
+  options(width=85) # ensure width
+  head(full_screen)
+```
+
+# Save
+
+```{r save, eval=FALSE}
+# save progress
+  save.image("SDMs_human_lit_review_I.RData")
+```
+
+---------------------------------------------------------
+
+**_THIS IS THE END OF THE SCRIPT._**
+
+**_See "Human Influence in SDMs: Literature Review (Part II)" for next steps._**
+
+---------------------------------------------------------

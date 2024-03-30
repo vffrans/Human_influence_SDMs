@@ -1,0 +1,1836 @@
+---
+title: 'Human Influence in SDMs: Literature Review (Part IV)'
+author: 'Veronica F. Frans (email: verofrans@gmail.com)'
+date: 'February 1, 2024'
+output:
+  pdf_document:
+    fig_height: 5
+    fig_width: 8
+    keep_tex: yes
+    number_sections: yes
+    toc: yes
+    toc_depth: 4
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    toc_depth: 4
+  word_document:
+    toc: yes
+    toc_depth: '4'
+header-includes:
+- \usepackage{pdflscape}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \fancyhead[CO,CE]{Supporting Information}
+- \fancyhead[LO,LE]{Frans and Liu 2024}
+- \fancyhead[RO,RE]{Human Influence in SDMs}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, cache.comments = TRUE,
+                      warning= FALSE, message = FALSE, tinytex.verbose = TRUE,
+                      knitr.table.format = "html")
+```
+
+\newpage
+
+# Summary
+
+This is the fourth R script of the literature review and synthesis for the article entitled, "Gaps and opportunities in modeling human influence on species distributions in the Anthropocene," by Veronica F. Frans and Jianguo Liu.
+
+Here, in Part IV of the synthesis, we use the CSV files of the systematic review and data cleanup from Part I-III to assess the study area scales and get a global context for human predictor use in SDMs. We also summarize SDM algorithms across studies and do a final cleanup of the dataset for export as Supporting Information.
+
+Thus, the following is accomplished:
+
+(1) Summary of study area scales across articles
+(2) Maps of study countries for all articles, taxa, domain, and study focus
+(3) Maps with frequency of studies across spatial scales
+(4) Maps of first published years of human predictor use across spatial scales
+(5) Maps showing frequency of predictors across spatial scales
+(6) Cleanup and summary of SDM algorithms used across articles
+(7) Export of CSV file for the systematic review (supplementary material for publication)
+
+The next script (Part V) uses the predictor list and the resulting CSV file of the systematic review to summarize predictor use in relation to United Nations Sustainable Development Goals (SDGs).
+
+# R Setup
+
+We are using R version 4.3.0 (R Core Team 2023). 
+
+## Libraries
+
+Load libraries
+
+```{r packages, results='hide', message=FALSE, warning=FALSE}
+# load libraries
+  library("dplyr")         # for table manipulations
+  library("scales")        # for scales and formatting
+  library("kableExtra")    # for table viewing in Rmarkdown
+  library("tidyr")         # for table manipulations
+  library("plyr")          # for table manipulations
+  library("tidyverse")     # for graphics/table management
+  library("ggplot2")       # for graphics
+  library("RColorBrewer")  # for graphics
+  library("ggforce")       # for graphics (speeds up ggplot)
+  library("ggalluvial")    # for graphics
+  library("ggbreak")       # for graphics
+  library("patchwork")     # for graphics
+  library("classInt")      # for graphics
+  library("biscale")       # for graphics
+  library("raster")        # for mapping
+  library("rgdal")         # for mapping
+  library("sp")            # for mapping
+  library("ggmap")         # for mapping and graphics
+  library("maps")          # for mapping
+  library("tmap")          # for mapping
+  library("plotfunctions") # for data visualization
+  library("svglite")       # for saving graphics in svg format
+  library("countrycode")   # for country name edits
+```
+
+## Directories
+
+The primary directory is the folder where the `hum_sdm_litrv_r.Rproj` is stored.
+
+```{r directories, warning=FALSE, results='hide'}
+
+# create image folder and its directory
+  dir.create(paste0("images"))
+  image.dir <- paste0("images\\")
+
+# create data folder and its directory
+  dir.create(paste0("data"))
+  data.dir <- paste0("data\\")
+```
+
+## Load data
+
+Upload the data table from the abstract screening and review, and subset to only the articles that are accepted. We will also need a few saved CSV files created in Part II.
+
+```{r load}
+# full article screening and review table
+  rev.df <- read.csv(paste0(data.dir,"hum_sdm_lit_review_RAW.csv"),
+                            header=T, sep=",")
+
+# subset of only accepted articles (after year 2000)
+  yes.df <- rev.df[(rev.df$relevant=="yes"),]
+  yes.df <- yes.df[(yes.df$year>=2000),]
+    
+# study domain, taxa, and focus list of counts
+  domtaxfoc.df <- read.csv(paste0(data.dir,"domain_taxa_focus_count_papers.csv"),
+                           header=T, sep=",")
+  
+# predictor list of counts
+  preds.list.export <- read.csv(paste0(data.dir,"predictor_list_summary_FINAL.csv"),
+                                header=T, sep=",")
+
+# study domain, taxa, focus, and predictor list (very long)
+  prdotf.list.long <- read.csv(paste0(data.dir,"predictor_domain_taxa_focus_long.csv"),
+                               header=T, sep=",")
+  
+# ambiguous predictor list
+  amb.df <- read.csv(paste0(data.dir,"ambiguous_predictor_dataframe.csv"),
+                               header=T, sep=",")
+```
+
+# Study area scale
+
+Make a pie chart of the study area scales across articles. 
+
+## Table setup
+
+```{r maps_table}
+# edit country and multi-country scale names
+  yes.df$study_area_scale[yes.df$study_area_scale == "country" ] <- "national"
+  yes.df$study_area_scale[yes.df$study_area_scale == "multi-country" ] <- "multinational"
+
+# subset table
+  study.area.df <- subset(yes.df, select=c("uid","study_area_scale","study_area_country"))
+
+# edit a typo
+  study.area.df$study_area_scale[
+                          study.area.df$study_area_scale=="contintental"] <- "continental"
+  
+# set scale as factor
+  study.area.df$study_area_scale <- as.factor(as.character(study.area.df$study_area_scale))
+
+# get summary
+  summary(study.area.df)
+```
+
+## Table: study area scales
+
+```{r study_scales}
+# Get a count of scale for each paper
+  study.scales.list <- ddply(study.area.df, .(study_area_scale),
+                             summarize,
+                             count_studies=length(study_area_scale),
+                             count_papers=length(unique(uid)),
+                             percent_papers=count_papers/length(unique(study.area.df$uid))*100
+                             )
+
+# Sort by most frequent
+  study.scales.list <- study.scales.list[order(-study.scales.list$count_papers),]
+ 
+# adjust levels
+  study.scales.list$study_area_scale <- factor(study.scales.list$study_area_scale,
+                                        levels=c("local","regional","national",
+                                                 "multinational", "continental","global"))
+  
+# add column for positioning labels on pie chart
+  study.scales.list <- study.scales.list %>% 
+                       group_by(study_area_scale) %>% 
+                       mutate(pos = (cumsum(count_papers)-count_papers)/2)
+
+# View table
+  kableExtra::kbl(study.scales.list,booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+
+## Pie chart
+
+Blank theme from http://www.sthda.com/english/wiki/ggplot2-pie-chart-quick-start-guide-r-software-and-data-visualization:
+
+```{r pie_blank}
+# create blank theme
+  blank_theme <- theme_minimal()+
+                 theme(
+                 axis.title.x = element_blank(),
+                 axis.title.y = element_blank(),
+                 panel.border = element_blank(),
+                 panel.grid=element_blank(),
+                 axis.ticks = element_blank(),
+                 plot.title=element_text(size=14, face="bold")
+                 )
+```
+
+Make pie chart.
+
+```{r pie_scale}
+  require('scales')
+
+# colorblind-friendly colors
+  sc.cols <- c('#882255','#0077BB','#44AA99','#117733','#999933','#DDCC77')
+  
+# label positions
+  sc.pos <- c(300,200,120,50,25,10)
+  sc.pos.x <- c(1.3,1,.9,1.5,1.35,1.5)
+  sc.pos.y <- c(10,25,-15,8,5,8)
+  
+# barchart
+  sc.bar <- ggplot(data=study.scales.list) +
+            aes(x="", y=count_papers, fill=study_area_scale)+
+            geom_bar(width = 1, stat = "identity") +
+            scale_fill_manual(values=sc.cols) +
+            geom_text(aes(x = 1.1, y = sc.pos,label = count_papers), size=5)+
+            geom_text(aes(x = sc.pos.x,
+                          y = sc.pos.y+sc.pos,
+                          label = study_area_scale), size=6)
+  
+# convert to pie
+  sc.pie <- sc.bar + coord_polar(theta="y", start=0)
+  sc.pie <- sc.pie + blank_theme # activate for blank theme function
+  
+# pie labeled
+  sc.lab <- sc.pie +
+            theme(plot.margin = unit(c(-2,0,0,0), "lines"))
+  
+# save
+  ggsave(plot=sc.lab, filename = paste0(image.dir,'study_area_scale_pie.png'),
+         height = 5, width = 5, units = 'in', dpi = 600)
+  ggsave(plot=sc.lab, filename = paste0(image.dir,'study_area_scale_pie.svg'),
+         height = 5, width = 5, units = 'in')
+```
+
+This figure will be edited later into the overall map of study area countries compared to human footprint, which was done using ArcPro.
+
+# Edit study area country names
+
+Next, we refine the list of countries for the study areas. The study areas were recorded based on the materials and methods sections of the articles, or extracted from visually inspecting any maps that were provided by the authors as reference. Here, the list of countries are converted using the `countrycode` package. Note that some country names did not fully carry over, but to the best of our abilities, we edited and made further matches for mapping.
+
+## Country name edits
+
+Make new rows for each country in the study area dataset.
+
+```{r country_rows}
+# Separate countries into multiple rows
+  study.area.df2 <- separate_rows(study.area.df,study_area_country,sep="; ",
+                                  convert = TRUE)
+  
+# Change to factor
+  study.area.df2$study_area_country <- as.factor(study.area.df2$study_area_country)
+```
+
+Edit country names using the `countrycode` package.
+
+```{r name_edit}
+# Function to correct misspelled country names
+  edit_country_names <- function(country){
+                                        countrycode(country, "country.name", "country.name")
+                                          }
+
+# Apply the correction function to the 'country' column (this takes time!)
+  study.area.df2$country_edit <- sapply(study.area.df2$study_area_country,
+                                        edit_country_names)
+
+# Print the corrected data
+  levels(as.factor(study.area.df2$country_edit))
+```
+
+Edit remaining country names.
+
+```{r name_edit_2}
+# subset data to edit
+  edit.list <- study.area.df2[is.na(study.area.df2$country_edit),]
+
+# reset factor levels
+  edit.list$study_area_country <- droplevels(edit.list$study_area_country)
+
+# display here (note that we are ignoring continental and global studies in the edits)
+  #summary(as.factor(edit.list$study_area_country))
+  
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c("Azores" = "Portugal",
+                "Borneo" = "Indonesia",
+                "Burunei" = "Brunei",
+                "Columbia" = "Colombia",
+                "England" = "United Kingdom",
+                "Gemany" = "Germany",
+                "Gerogia" = "Georgia",
+                "Java" = "Indonesia",
+                "Krgyzstan" = "Kyrgyzstan",
+                "Lybia" = "Libya",
+                "Mauritiana" = "Mauritania",
+                "Northern Ireland" = "United Kingdom",
+                "Paracel Islands" = "China",
+                "Phillipines" = "Philippines",
+                "Saint Martin" = "St Maarten",
+                "Saipan" = "United States",
+                "Scotland" = "United Kingdom",
+                "Spartly Island" = "Philippines",
+                "Sumatra" = "Indonesia",
+                "Sundan" = "Sudan",
+                "Uraguay" = "Uruguay",
+                "Wales" = "United Kingdom"
+  )
+  
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    edit.list <- data.frame(lapply(edit.list, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# Apply the correction function to the 'country' column (this takes time!)
+  edit.list$country_edit <- sapply(edit.list$study_area_country,
+                                   edit_country_names)
+
+# Print the corrected data
+  levels(as.factor(edit.list$country_edit))
+```
+
+Merge corrected data with the original table.
+
+```{r name_merge}
+# manual edit
+  study.area.df2$country_edit[study.area.df2$study_area_country=="Oceania"] <- "Oceania"
+
+# format columns and rows
+  study.area.df2$uid <- as.character(study.area.df2$uid)
+  study.area.all <- study.area.df2[!is.na(study.area.df2$country_edit),]
+
+# combine rows
+  study.area.all <- rbind(study.area.all,edit.list)
+
+# remove any duplicated country names per uid
+  study.area.all <- study.area.all[!duplicated(study.area.all[c('uid','country_edit')]),]
+```
+
+Next, we generate the ISO for country names and append to `country.list` for use in mapping.
+
+```{r name_iso}
+# extract ISO2 code for each country
+  study.area.all$iso2 <- countrycode(study.area.all$country_edit, "country.name", "iso2c")
+
+# extract ISO3 code for each country
+  study.area.all$iso3 <- countrycode(study.area.all$country_edit, "country.name", "iso3c")
+```
+
+Delete an entry for a region that is not assigned as a country under this package.
+
+```{r name_delete}
+# delete an entry
+  study.area.all <- study.area.all[!(study.area.all$study_area_country=="Kosovo"),]
+```
+
+Get final summary of countries studied.
+
+```{r name_count}
+# get count of countries studied
+  paste(length(unique(study.area.all$country_edit,na.rm=T)),
+        "countries have used human predictors in SDMs")
+```
+
+## Merge and export country names to literature review CSV
+
+Compress country names and ISO codes to the existing edited systematic review dataframe of accepted articles. Using this full table will help to map summaries of study areas across taxa, domain, and study focus levels. We will also merge the publication years to this dataset.
+
+```{r name_export}
+# # make new column called region and copy over continental and global scale names (original column)
+  study.area.all$region <- study.area.all$country_edit
+  study.area.all$region[is.na(study.area.all$region)] <- as.character(
+    study.area.all$study_area_country[is.na(study.area.all$region)])
+
+# drop columns
+  study.area.all <- subset(study.area.all, select = -c(study_area_country,country_edit))
+
+# set uid to integer
+  study.area.all$uid <- as.integer(as.character(study.area.all$uid))
+
+# left join by paper ID (uid)
+  full.list.long <- left_join(prdotf.list.long, study.area.all, by='uid',
+                              relationship = "many-to-many")
+  full.list.long <- distinct(full.list.long, .keep_all = TRUE) # ensure no repeated rows
+  
+# add years of publication via left-join
+  year.df <- subset(yes.df, select = c('uid','year'))
+  
+# left join by paper ID (uid)
+  full.list.long <- left_join(full.list.long, year.df, by='uid')
+  full.list.long <- distinct(full.list.long, .keep_all = TRUE) # ensure no repeated rows
+  
+# drop columns with names ending in ".x" and ".y"
+  columns_to_drop <- grepl("\\.x$|\\.y$", names(full.list.long))
+
+# Remove the identified columns
+  full.list.long <- full.list.long[, !columns_to_drop]
+  
+ # save as a CSV
+  write.csv(full.list.long,
+            paste0(data.dir,"scale_taxa_domain_focus_predictor_countries.csv"),
+            row.names = FALSE)
+```
+
+## Subset by continent and global scales
+
+Make subsets of the different study area scales for the summary maps.
+
+```{r name_cont}
+# reread to remove rownames
+  full.list.long <- read.csv(paste0(data.dir,"scale_taxa_domain_focus_predictor_countries.csv"),
+                               header=T, sep=",")
+
+# Make continental, country, and global lists
+  study.continent <- full.list.long[grep("continental",full.list.long$study_area_scale),]
+  study.country <- full.list.long[-grep("continental",full.list.long$study_area_scale),]
+  study.country <- study.country[-grep("global",study.country$study_area_scale),]
+  study.global <- full.list.long[grep("global",full.list.long$study_area_scale),]
+```
+
+# Study country map
+
+Here, we map the numbers of articles per country by first making summary tables of counts.
+
+```{r country_sums}
+# Get a count of countries
+  country.list <- ddply(study.country, .(region,iso3,iso2),
+                        summarize,
+                        # number of articles
+                        n_papers=length(unique(uid)),
+                        # percent of articles
+                        perc_papers=length(unique(uid))/length(unique(full.list.long$uid))
+                        )
+```
+
+Next, we match the country names using a worldmap within the tmap package.
+
+```{r country_coalesce}
+# match country names to world map using names
+  data(World)
+  country.list$name <- country.list$region
+  country_papers <- left_join(World, country.list, by = "name")
+  
+# rejoin for mismatch via ISO3
+  missing_countries <- anti_join(country.list, World, by = "name")
+  missing_countries$iso_a3 <- missing_countries$iso3
+  all_papers <- left_join(country_papers,missing_countries, by = "iso_a3")%>%
+                          mutate(name = name.x,
+                                 region = coalesce(region.x, region.y),
+                                 iso2 = coalesce(iso2.x, iso2.y),
+                                 iso3 = coalesce(iso3.x, iso3.y),
+                                 region = coalesce(region.x, region.y),
+                                 n_papers = coalesce(n_papers.x,n_papers.y),
+                                 perc_papers = coalesce(perc_papers.x, perc_papers.y)
+                                 )
+  
+# drop columns with names ending in ".x" and ".y"
+  columns_to_drop <- grepl("\\.x$|\\.y$", names(all_papers))
+
+# remove the identified columns
+  all_papers <- all_papers[, !columns_to_drop]
+  
+# get number of countries for which names and ISO3 matched
+  paste(nrow(all_papers[!is.na(all_papers$region),]),
+        "out of",length(unique(country.list$region)),
+        "counry names were matchable to the world map")
+```
+
+```{r country_map}
+# set mode to plotting
+  tmap_mode("plot")
+  #tmap_mode("view")  # set to viewing for interactive map
+  
+# plot using `tmap`
+  cty_ints <- classIntervals(all_papers$n_papers, 9, style = "jenks")
+  country.map <- tm_shape(all_papers) +
+                 tm_borders("#d0cbcb", alpha = 1, lwd = 0.6) +
+                 tm_polygons("n_papers", style = "cont",
+                              breaks = c(1,10,20,30,40,50,60,100,280), # manual breaks
+                              #breaks = pretty(c(1, 280), n = 9),
+                              #breaks = unique(as.integer(cty_ints$brks)),
+                              palette = brewer.pal(n = 9, name = "BuPu"),
+                              colorNA = 'grey90',
+                              textNA = "NA",
+                              title="no. articles",
+                              legend.is.portrait=FALSE) +
+                tm_layout(main.title = 'study areas at local, regional, and national scales',
+                          main.title.position = c('left','top'),
+                          legend.position = c('left','bottom'),
+                          legend.bg.color = 'white',
+                          legend.bg.alpha = 0.5,
+                          frame = FALSE)
+  
+# save figure
+  tmap_save(country.map, filename = paste0(image.dir,"study_area_articles_per_country.png"),
+            height = 6, width = 8, units = 'in', dpi = 600)
+  tmap_save(country.map, filename = paste0(image.dir,"study_area_articles_per_country.svg"),
+            height = 6, width = 8, units = 'in')
+  
+# show here
+  country.map
+```
+
+Save map as shapefile, for use in the ArcPro version of this visualized map.
+
+```{r country_save, message=FALSE, warning=FALSE, eval=FALSE}
+# save as shapefile
+  sf::st_write(all_papers, paste0(data.dir,"all_papers_poly.shp"))
+```
+
+# Study domain map
+
+Here, we map the numbers of articles per country by first making summary tables of counts.
+
+```{r domain_sums}
+# Get a count of countries
+  country.domain <- ddply(study.country, .(region, iso3, iso2),
+                          summarize,
+                          # number of articles
+                          n_papers = length(unique(uid)),
+                          # percent of articles
+                          perc_papers = length(unique(uid))/length(unique(full.list.long$uid)),
+                          # count of unique uid when domain is "freshwater"
+                          n_freshwater = length(unique(uid[domain == "freshwater"])),
+                          # count of unique uid when domain is "marine"
+                          n_marine = length(unique(uid[domain == "marine"])),
+                          # count of unique uid when domain is "terrestrial"
+                          n_terrestrial = length(unique(uid[domain == "terrestrial"]))
+)
+```
+
+Next, we match the country names using a worldmap within the tmap package. We make two matching attempts via two data entries: country name and ISO3 code.
+
+```{r domain_coalesce}
+# match country names to world map using names
+  data(World)
+  country.domain$name <- country.domain$region
+  domain_papers <- left_join(World, country.domain, by = "name")
+  
+# rejoin for mismatch via ISO3
+  missing_countries <- anti_join(country.domain, World, by = "name")
+  missing_countries$iso_a3 <- missing_countries$iso3
+  all_domain <- left_join(domain_papers,missing_countries, by = "iso_a3") %>%
+                          mutate(name = name.x,
+                                 region = coalesce(region.x, region.y),
+                                 iso2 = coalesce(iso2.x, iso2.y),
+                                 iso3 = coalesce(iso3.x, iso3.y),
+                                 region = coalesce(region.x, region.y),
+                                 n_papers = coalesce(n_papers.x, n_papers.y),
+                                 perc_papers = coalesce(perc_papers.x, perc_papers.y),
+                                 n_freshwater = coalesce(n_freshwater.x, n_freshwater.y),
+                                 n_marine = coalesce(n_marine.x, n_marine.y),
+                                 n_terrestrial = coalesce(n_terrestrial.x, n_terrestrial.y)
+                                 )
+  
+# drop columns with names ending in ".x" and ".y"
+  columns_to_drop <- grepl("\\.x$|\\.y$", names(all_domain))
+
+# Remove the identified columns
+  all_domain <- all_domain[, !columns_to_drop]
+  
+# convert counts of 0 for each domain to NA
+  all_domain$n_freshwater <- ifelse(all_domain$n_freshwater == 0, NA, all_domain$n_freshwater)
+  all_domain$n_marine <- ifelse(all_domain$n_marine == 0, NA, all_domain$n_marine)
+  all_domain$n_terrestrial <- ifelse(all_domain$n_terrestrial == 0, NA, all_domain$n_terrestrial)
+  
+# get number of countries for which names and ISO3 matched
+  paste(nrow(all_domain[!is.na(all_domain$region),]),
+        "out of",length(unique(country.domain$region)),
+        "country names were matchable to the world map")
+```
+
+Make a multi-plot of maps. 
+
+```{r domain_map, fig.width=6,fig.height=9}
+# set mode to plotting
+  tmap_mode("plot")
+  #tmap_mode("view")  # set to viewing for interactive map
+
+# plot using `tmap`
+  # freshwater
+    fr_ints <- classIntervals(all_domain$n_freshwater, 6, style = "jenks")
+    fresh.map <- tm_shape(all_domain) +
+                 tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+                 tm_polygons("n_freshwater", style = "cont",
+                             breaks = c(1,5,10,15,25,55), # manual breaks
+                             palette = brewer.pal(n = 6, name = "BuPu"),
+                             colorNA = 'grey90',
+                             textNA = "NA",
+                             title="no. articles",
+                             legend.is.portrait=FALSE) +
+                 tm_layout(main.title = 'freshwater',
+                           main.title.position = c('left','top'),
+                           legend.position = c('left','bottom'),
+                           legend.bg.color = 'white',
+                           legend.bg.alpha = 0.5,
+                           frame = FALSE)
+  # marine
+    ma_ints <- classIntervals(all_domain$n_marine, 5, style = "jenks")
+    mar.map <- tm_shape(all_domain) +
+               tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+               tm_polygons("n_marine", style = "cont",
+                           breaks = c(1,2,3,4,5,6),  # manual breaks
+                           #breaks = unique(as.integer(ma_ints$brks)),
+                           palette = brewer.pal(n = 6, name = "BuPu"),
+                           colorNA = 'grey90',
+                           textNA = "NA",
+                           title="no. articles",
+                           legend.is.portrait=FALSE) +
+               tm_layout(main.title = 'marine',
+                         main.title.position = c('left','top'),
+                         legend.position = c('left','bottom'),
+                         legend.bg.color = 'white',
+                         legend.bg.alpha = 0.5,
+                         frame = FALSE)
+  # terrestrial
+    te_ints <- classIntervals(all_domain$n_terrestrial, 5, style = "jenks")
+    terr.map <- tm_shape(all_domain)  +
+                tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+                tm_polygons("n_terrestrial", style = "cont",
+                            breaks = c(1,10,30,50,100,230), # manual breaks
+                            #breaks = unique(as.integer(te_ints$brks)),
+                            palette = brewer.pal(n = 6, name = "BuPu"),
+                            colorNA = 'grey90',
+                              textNA = "NA",
+                            title="no. articles",
+                            legend.is.portrait=FALSE) +
+                tm_layout(main.title = 'terrestrial',
+                          main.title.position = c('left','top'),
+                          legend.position = c('left','bottom'),
+                          legend.bg.color = 'white',
+                          legend.bg.alpha = 0.5,
+                          frame = FALSE)
+  
+# compile all together
+  domain.fig <- tmap_arrange(fresh.map, mar.map, terr.map, nrow = 3)
+  
+# save figure
+  tmap_save(domain.fig, filename = paste0(image.dir,"domain_articles_per_country.png"),
+            height = 9, width = 6, units = 'in', dpi = 600)
+  tmap_save(domain.fig, filename = paste0(image.dir,"domain_articles_per_country.svg"),
+            height = 9, width = 6, units = 'in')
+  
+# show here
+  domain.fig
+```
+
+# Study taxa map
+
+Here, we map the numbers of articles per country by first making summary tables of counts.
+
+```{r taxa_sums}
+# Get a count of countries
+  country.taxa <- ddply(study.country, .(region, iso3, iso2),
+                        summarize,
+                        # number of articles
+                        n_papers = length(unique(uid)),
+                        # percent of articles
+                        perc_papers = length(unique(uid))/length(unique(full.list.long$uid)),
+                        # count of unique uid for each taxa
+                        n_amphibians = length(unique(uid[taxa == "amphibians"])),
+                        n_birds = length(unique(uid[taxa == "birds"])),
+                        n_fish = length(unique(uid[taxa == "fish"])),
+                        n_plants = length(unique(uid[taxa == "herbaceous plants"])),
+                        n_inverts = length(unique(uid[taxa == "invertebrates"])),
+                        n_mammals = length(unique(uid[taxa == "mammals"])),
+                        n_micro = length(unique(uid[taxa == "microorganisms"])),
+                        n_reptiles = length(unique(uid[taxa == "reptiles"])),
+                        n_trees = length(unique(uid[taxa == "trees/shrubs"]))
+                        )
+```
+
+Next, we match the country names using a worldmap within the tmap package. We make two matching attempts via two data entries: country name and ISO3 code.
+
+```{r taxa_coalesce}
+# match country names to world map using names
+  data(World)
+  country.taxa$name <- country.taxa$region
+  taxa_papers <- left_join(World, country.taxa, by = "name")
+  
+# rejoin for mismatch via ISO3
+  missing_countries <- anti_join(country.taxa, World, by = "name")
+  missing_countries$iso_a3 <- missing_countries$iso3
+  all_taxa <- left_join(taxa_papers,missing_countries, by = "iso_a3")%>%
+                        mutate(name = name.x,
+                               region = coalesce(region.x, region.y),
+                               iso2 = coalesce(iso2.x, iso2.y),
+                               iso3 = coalesce(iso3.x, iso3.y),
+                               region = coalesce(region.x, region.y),
+                               n_papers = coalesce(n_papers.x, n_papers.y),
+                               perc_papers = coalesce(perc_papers.x, perc_papers.y),
+                               n_amphibians = coalesce(n_amphibians.x, n_amphibians.y),
+                               n_birds = coalesce(n_birds.x, n_birds.y),
+                               n_fish = coalesce(n_fish.x,n_fish.y),
+                               n_plants = coalesce(n_plants.x,n_plants.y),
+                               n_inverts = coalesce(n_inverts.x,n_inverts.y),
+                               n_mammals = coalesce(n_mammals.x,n_mammals.y),
+                               n_micro = coalesce(n_micro.x,n_micro.y),
+                               n_reptiles = coalesce(n_reptiles.x,n_reptiles.y),
+                               n_trees = coalesce(n_trees.x,n_trees.y)
+                               )
+
+# drop columns with names ending in ".x" and ".y"
+  columns_to_drop <- grepl("\\.x$|\\.y$", names(all_taxa))
+
+# Remove the identified columns
+  all_taxa <- all_taxa[, !columns_to_drop]
+  
+# convert counts of 0 for each taxa to NA
+  all_taxa$n_amphibians <- ifelse(all_taxa$n_amphibians == 0, NA, all_taxa$n_amphibians)
+  all_taxa$n_birds <- ifelse(all_taxa$n_birds == 0, NA, all_taxa$n_birds)
+  all_taxa$n_fish <- ifelse(all_taxa$n_fish == 0, NA, all_taxa$n_fish)
+  all_taxa$n_plants <- ifelse(all_taxa$n_plants == 0, NA, all_taxa$n_plants)
+  all_taxa$n_inverts <- ifelse(all_taxa$n_inverts == 0, NA, all_taxa$n_inverts)
+  all_taxa$n_mammals <- ifelse(all_taxa$n_mammals == 0, NA, all_taxa$n_mammals)
+  all_taxa$n_micro <- ifelse(all_taxa$n_micro == 0, NA, all_taxa$n_micro)
+  all_taxa$n_reptiles <- ifelse(all_taxa$n_reptiles == 0, NA, all_taxa$n_reptiles)
+  all_taxa$n_trees <- ifelse(all_taxa$n_trees == 0, NA, all_taxa$n_trees)
+  
+# get number of countries for which names and ISO3 matched
+  paste(nrow(all_taxa[!is.na(all_taxa$region),]),
+        "out of",length(unique(country.taxa$region)),
+        "country names were matchable to the world map")
+```
+
+Next, we make a function for maps to look similar to each other, with the exception of unique legends, using manual breaks.
+
+```{r taxa_map_funct}
+# create a mapping style function
+  require(tmap)
+  require(RColorBrewer)
+  require(classInt)
+
+  cat_map <- function(data, variable, title, manualbreaks) {
+                      map <- tm_shape(data) +
+                             tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+                             tm_polygons(variable, style = "cont",
+                                         breaks = manualbreaks, # manual breaks
+                                         palette = brewer.pal(n = length(manualbreaks),
+                                                              name = "BuPu"),
+                                         colorNA = 'grey90',
+                                         textNA = "NA",
+                                         title="no. articles",
+                                         legend.is.portrait=FALSE) +
+                             tm_layout(main.title = title,
+                                       main.title.position = c('left','top'),
+                                       main.title.size = 0.75,
+                                       legend.position = c('left','bottom'),
+                                       legend.bg.color = 'white',
+                                       legend.bg.alpha = 0.5,
+                                       legend.title.size = 1,
+                                       legend.height = 0.3,
+                                       legend.width = 0.75,
+                                       legend.text.size = 0.75,
+                                       frame = FALSE)
+                      return(map)
+                     }
+```
+
+And then we produce maps using the above function.
+
+```{r taxa_map, warning=FALSE, fig.height=4, fig.width=7}
+# make maps
+  amph.map <- cat_map(all_taxa, "n_amphibians", "amphibians",c(1,2,4,6,8,14))
+  bird.map <- cat_map(all_taxa, "n_birds", "birds",c(1,5,10,20,40,80))
+  fish.map <- cat_map(all_taxa, "n_fish", "fish",c(1,2,3,4,5,35))
+  plnt.map <- cat_map(all_taxa, "n_plants", "plants",c(1,5,10,15,20,40))
+  invt.map <- cat_map(all_taxa, "n_inverts", "invertebrates",c(1,5,10,15,20,40))
+  mamm.map <- cat_map(all_taxa, "n_mammals", "mammals",c(1,10,20,30,40,70))
+  micr.map <- cat_map(all_taxa, "n_micro", "microorganisms",c(1,2,3,4,5))
+  rept.map <- cat_map(all_taxa, "n_reptiles", "reptiles",c(1,2,3,5,10,15))
+  tree.map <- cat_map(all_taxa, "n_trees", "trees/shrubs",c(1,2,4,6,8,10))
+
+# compile all together
+  taxa.fig <- tmap_arrange(amph.map, bird.map, fish.map,
+                           plnt.map, invt.map, mamm.map,
+                           micr.map, rept.map, tree.map,
+                           ncol = 3)
+  
+# save figure
+  tmap_save(taxa.fig, filename = paste0(image.dir,"taxa_articles_per_country.png"),
+            height = 4, width = 7, units = 'in',
+            dpi = 600)
+  tmap_save(taxa.fig, filename = paste0(image.dir,"taxa_articles_per_country.svg"),
+            height = 4, width = 7, units = 'in')
+  
+# show here
+  taxa.fig
+```
+
+# Study focus map
+
+Here, we map the numbers of articles per country by first making summary tables of counts.
+
+```{r focus_sums}
+# Get a count of countries
+  country.focus <- ddply(study.country, .(region, iso3, iso2),
+                    summarize,
+                    # number of articles
+                    n_papers = length(unique(uid)),
+                    # percent of articles
+                    perc_papers = length(unique(uid))/length(unique(full.list.long$uid)),
+                    # count of unique uid for each study_focus
+                    n_conf = length(unique(uid[study_focus == "conflict/collisions"])),
+                    n_cons = length(unique(uid[study_focus == "conservation"])),
+                    n_dist = length(unique(uid[study_focus == "disturbance/habitat change"])),
+                    n_expl = length(unique(uid[study_focus == "exploratory"])),
+                    n_food = length(unique(uid[study_focus == "food/economics"])),
+                    n_heal = length(unique(uid[study_focus == "human health/safety"])),
+                    n_inva = length(unique(uid[study_focus == "invasions"])),
+                    n_rest = length(unique(uid[study_focus == "reintroduction/restoration"]))
+                        )
+```
+
+Next, we match the country names using a worldmap within the tmap package. We make two matching attempts via two data entries: country name and ISO3 code.
+
+```{r focus_coalesce}
+# match country names to world map using names
+  data(World)
+  country.focus$name <- country.focus$region
+  focus_papers <- left_join(World, country.focus, by = "name")
+  
+# rejoin for mismatch via ISO3
+  missing_countries <- anti_join(country.focus, World, by = "name")
+  missing_countries$iso_a3 <- missing_countries$iso3
+  all_focus <- left_join(focus_papers,missing_countries, by = "iso_a3")%>%
+                        mutate(name = name.x,
+                               region = coalesce(region.x, region.y),
+                               iso2 = coalesce(iso2.x, iso2.y),
+                               iso3 = coalesce(iso3.x, iso3.y),
+                               region = coalesce(region.x, region.y),
+                               n_papers = coalesce(n_papers.x, n_papers.y),
+                               perc_papers = coalesce(perc_papers.x, perc_papers.y),
+                               n_conf = coalesce(n_conf.x, n_conf.y),
+                               n_cons = coalesce(n_cons.x, n_cons.y),
+                               n_dist = coalesce(n_dist.x,n_dist.y),
+                               n_expl = coalesce(n_expl.x,n_expl.y),
+                               n_food = coalesce(n_food.x,n_food.y),
+                               n_heal = coalesce(n_heal.x,n_heal.y),
+                               n_inva = coalesce(n_inva.x,n_inva.y),
+                               n_rest = coalesce(n_rest.x,n_rest.y)
+                               )
+  
+# drop columns with names ending in ".x" and ".y"
+  columns_to_drop <- grepl("\\.x$|\\.y$", names(all_focus))
+
+# Remove the identified columns
+  all_focus <- all_focus[, !columns_to_drop] 
+  
+# convert counts of 0 for each focus to NA
+  all_focus$n_conf <- ifelse(all_focus$n_conf == 0, NA, all_focus$n_conf)
+  all_focus$n_cons <- ifelse(all_focus$n_cons == 0, NA, all_focus$n_cons)
+  all_focus$n_dist <- ifelse(all_focus$n_dist == 0, NA, all_focus$n_dist)
+  all_focus$n_expl <- ifelse(all_focus$n_expl == 0, NA, all_focus$n_expl)
+  all_focus$n_food <- ifelse(all_focus$n_food == 0, NA, all_focus$n_food)
+  all_focus$n_heal <- ifelse(all_focus$n_heal == 0, NA, all_focus$n_heal)
+  all_focus$n_inva <- ifelse(all_focus$n_inva == 0, NA, all_focus$n_inva)
+  all_focus$n_rest <- ifelse(all_focus$n_rest == 0, NA, all_focus$n_rest)
+  
+# get number of countries for which names and ISO3 matched
+  paste(nrow(all_focus[!is.na(all_focus$region),]),
+        "out of",length(unique(country.focus$region)),
+        "country names were matchable to the world map")
+```
+
+Next, we make a function for maps to look similar to each other, with the exception of unique legends, using manual breaks.
+
+```{r focus_map_funct}
+# create a mapping style function
+  require(tmap)
+  require(RColorBrewer)
+  require(classInt)
+
+  cat_map <- function(data, variable, title, manualbreaks) {
+                      map <- tm_shape(data) +
+                             tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+                             tm_polygons(variable, style = "cont",
+                                         breaks = manualbreaks, # manual breaks
+                                         palette = brewer.pal(n = length(manualbreaks),
+                                                              name = "BuPu"),
+                                         colorNA = 'grey90',
+                                         textNA = "NA",
+                                         title="no. articles",
+                                         legend.is.portrait=FALSE) +
+                             tm_layout(main.title = title,
+                                       main.title.position = c('left','top'),
+                                       main.title.size = 0.75,
+                                       legend.position = c('left','bottom'),
+                                       legend.bg.color = 'white',
+                                       legend.bg.alpha = 0.5,
+                                       legend.title.size = 1,
+                                       legend.height = 0.3,
+                                       legend.width = 0.75,
+                                       legend.text.size = 0.75,
+                                       frame = FALSE)
+                      return(map)
+                     }
+  
+```
+
+Make a multi-plot of maps. 
+
+```{r focus_map, fig.height=4, fig.width=7}
+# example code to get ideas for manual breaks
+  #pretty(c(1,max(all_focus$n_conf,na.rm = TRUE)),n=6)
+
+# make maps
+  conf.map <- cat_map(all_focus, "n_conf", "conflict/collisions",c(1,2,4,6,8,10))
+  cons.map <- cat_map(all_focus, "n_cons", "conservation",c(1,5,10,20,40,65))
+  dist.map <- cat_map(all_focus, "n_dist", "disturbance/habitat change",c(1,5,10,15,20,50))
+  expl.map <- cat_map(all_focus, "n_expl", "exploratory",c(1,5,10,20,40,65))
+  food.map <- cat_map(all_focus, "n_food", "food/economics",c(1,2,4,6,10,12))
+  heal.map <- cat_map(all_focus, "n_heal", "human health/safety",c(1,2,4,6,10,12))
+  inva.map <- cat_map(all_focus, "n_inva", "invasions",c(1,5,10,15,20,50))
+  rest.map <- cat_map(all_focus, "n_rest", "reintroduction/restoration",c(1,5,10,15,20,30))
+
+# compile all together
+  focus.fig <- tmap_arrange(conf.map, cons.map, dist.map,
+                            expl.map, food.map, heal.map,
+                            inva.map, rest.map,
+                            ncol = 3)
+  
+# save figure
+  tmap_save(focus.fig, filename = paste0(image.dir,"focus_articles_per_country.png"),
+            height = 4, width = 7, units = 'in',
+            dpi = 600)
+  tmap_save(focus.fig, filename = paste0(image.dir,"focus_articles_per_country.svg"),
+            height = 4, width = 7, units = 'in')
+  
+# show here
+  focus.fig
+```
+
+# Study scale map
+
+Here, we map the numbers of articles per country by first making summary tables of counts.
+
+```{r scale_sums}
+# Get a count of countries
+  country.scale <- ddply(study.country, .(region, iso3, iso2),
+                         summarize,
+                         # number of articles
+                         n_papers = length(unique(uid)),
+                         # percent of articles
+                         perc_papers = length(unique(uid))/length(unique(full.list.long$uid)),
+                         # count of unique uid for each study_area_scale
+                         n_loc = length(unique(uid[study_area_scale == "local"])),
+                         n_reg = length(unique(uid[study_area_scale == "regional"])),
+                         n_ntl = length(unique(uid[study_area_scale == "national"])),
+                         n_mul = length(unique(uid[study_area_scale == "multinational"]))
+                         )
+```
+
+Next, we match the country names using a worldmap within the tmap package. We make two matching attempts via two data entries: country name and ISO3 code.
+
+```{r scale_coalesce}
+# match country names to world map using names
+  data(World)
+  country.scale$name <- country.scale$region
+  scale_papers <- left_join(World, country.scale, by = "name")
+  
+# rejoin for mismatch via ISO3
+  missing_countries <- anti_join(country.scale, World, by = "name")
+  missing_countries$iso_a3 <- missing_countries$iso3
+  all_scale <- left_join(scale_papers,missing_countries, by = "iso_a3")%>%
+                         mutate(name = name.x,
+                               region = coalesce(region.x, region.y),
+                               iso2 = coalesce(iso2.x, iso2.y),
+                               iso3 = coalesce(iso3.x, iso3.y),
+                               region = coalesce(region.x, region.y),
+                               n_papers = coalesce(n_papers.x, n_papers.y),
+                               perc_papers = coalesce(perc_papers.x, perc_papers.y),
+                               n_loc = coalesce(n_loc.x, n_loc.y),
+                               n_reg = coalesce(n_reg.x, n_reg.y),
+                               n_ntl = coalesce(n_ntl.x,n_ntl.y),
+                               n_mul = coalesce(n_mul.x,n_mul.y)
+                               )
+  
+# drop columns with names ending in ".x" and ".y"
+  columns_to_drop <- grepl("\\.x$|\\.y$", names(all_scale))
+
+# Remove the identified columns
+  all_scale <- all_scale[, !columns_to_drop] 
+  
+# convert counts of 0 for each focus to NA
+  all_scale$n_loc <- ifelse(all_scale$n_loc == 0, NA, all_scale$n_loc)
+  all_scale$n_reg <- ifelse(all_scale$n_reg == 0, NA, all_scale$n_reg)
+  all_scale$n_ntl <- ifelse(all_scale$n_ntl == 0, NA, all_scale$n_ntl)
+  all_scale$n_mul <- ifelse(all_scale$n_mul == 0, NA, all_scale$n_mul)
+  
+# get number of countries for which names and ISO3 matched
+  paste(nrow(all_scale[!is.na(all_scale$region),]),
+        "out of",length(unique(country.scale$region)),
+        "country names were matchable to the world map")
+```
+
+Next, we make the continental scale map.
+
+```{r scale_continent}
+# Get a count of continents
+  continents <- ddply(study.continent, .(region),
+                      summarize,
+                      # number of articles
+                      n_papers = length(unique(uid)),
+                      # percent of articles
+                      perc_papers = length(unique(uid))/length(unique(full.list.long$uid)),
+                      # count of unique uid for each study_area_scale
+                      n_con = length(unique(uid[study_area_scale == "continental"]))
+                      )
+
+# add a row with NA for Antarctica
+  continents[nrow(continents) + 1,] <- c("Antarctica",NA,NA,NA,NA)
+  
+# change structure
+  continents$n_papers <- as.integer(continents$n_papers)
+  continents$perc_papers <- as.numeric(continents$perc_papers)
+  continents$n_con <- as.integer(continents$n_con)
+  
+# view table
+  kableExtra::kbl(continents, booktabs = T,longtable = T) %>%
+              kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+Next, we make a function for maps to look similar to each other, with the exception of unique legends, using manual breaks.
+
+```{r scale_map_funct}
+# create a mapping style function
+  require(tmap)
+  require(RColorBrewer)
+  require(classInt)
+
+  cat_map <- function(data, variable, title, manualbreaks) {
+                      map <- tm_shape(data) +
+                             tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+                             tm_polygons(variable, style = "cont",
+                                         breaks = manualbreaks, # manual breaks
+                                         palette = brewer.pal(n = length(manualbreaks),
+                                                              name = "BuPu"),
+                                         colorNA = 'grey90',
+                                         textNA = "NA",
+                                         title="no. articles",
+                                         legend.is.portrait=FALSE) +
+                             tm_layout(main.title = title,
+                                       main.title.position = c('left','top'),
+                                       main.title.size = 0.75,
+                                       legend.position = c('left','bottom'),
+                                       legend.bg.color = 'white',
+                                       legend.bg.alpha = 0.5,
+                                       legend.title.size = 1,
+                                       legend.height = 0.3,
+                                       legend.width = 0.75,
+                                       legend.text.size = 0.75,
+                                       frame = FALSE)
+                      return(map)
+                     }
+```
+
+Make a multi-plot of maps. 
+
+```{r scale_map, warning=FALSE, fig.height=3, fig.width=7}
+# example code to get ideas for manual breaks
+  #pretty(c(1,max(all_scale$n_loc,na.rm = TRUE)),n=6)
+
+# make maps
+  loc.map <- cat_map(all_scale, "n_loc", "local", c(1,10,20,30,40,175))
+  reg.map <- cat_map(all_scale, "n_reg", "regional", c(1,5,10,20,30,80))
+  ntl.map <- cat_map(all_scale, "n_ntl", "national", c(1,2,4,6,8,16))
+  mul.map <- cat_map(all_scale, "n_mul", "multinational", c(1,5,10,15,20,30))
+  
+# continental scale map
+  # Join data to continent polygons
+    continents$continent <- continents$region
+    contmap <- merge(World, continents, by = "continent")
+  
+  # Create the map
+    con.map <- cat_map(contmap, "n_papers", "continental", c(1,5,10,15,20,30))
+  
+# global scale map (single color) with custom legend
+  glb.map <- tm_shape(World) +
+              tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+              tm_fill(col='#810f7c',
+                      title="no. articles",
+                      legend.is.portrait=FALSE) +
+              tm_layout(main.title = paste0("global (no. articles = ",
+                                            length(unique(study.global$uid)),")"),
+                      main.title.position = c('left','top'),
+                      main.title.size = 0.75,
+                      legend.position = c('left','bottom'),
+                      legend.bg.color = 'white',
+                      legend.bg.alpha = 0.5,
+                      legend.title.size = 1,
+                      legend.height = 0.3,
+                      legend.width = 0.75,
+                      legend.text.size = 0.75,
+                      frame = FALSE)
+
+# compile all together
+  scale.fig <- tmap_arrange(loc.map, reg.map,
+                            ntl.map, mul.map,
+                            con.map,
+                            glb.map,
+                            ncol = 3)
+  
+# save figure
+  tmap_save(scale.fig, filename = paste0(image.dir,"scale_articles_per_country.png"),
+            height = 3, width = 7, units = 'in',
+            dpi = 600)
+  tmap_save(scale.fig, filename = paste0(image.dir,"scale_articles_per_country.svg"),
+            height = 3, width = 7, units = 'in')
+  
+# show here
+  scale.fig
+```
+
+# Mapping first published years of human predictor use by scale
+
+Here, we map the years for the first time human predictors are used in SDMs around the world at various spatial scales.
+
+```{r year_sums}
+# Get a count of countries
+  country.yrs <- ddply(study.country, .(region, iso3, iso2),
+                         summarize,
+                         # first year of publication by scale
+                         yr_loc = min(year[study_area_scale == "local"]),
+                         yr_reg = min(year[study_area_scale == "regional"]),
+                         yr_ntl = min(year[study_area_scale == "national"]),
+                         yr_mul = min(year[study_area_scale == "multinational"])
+                         )
+```
+
+Next, we match the country names using a worldmap within the tmap package. We make two matching attempts via two data entries: country name and ISO3 code.
+
+```{r year_coalesce}
+# match country names to world map using names
+  data(World)
+  country.yrs$name <- country.yrs$region
+  year_papers <- left_join(World, country.yrs, by = "name")
+  
+  
+# rejoin for mismatch via ISO3
+  missing_countries <- anti_join(country.yrs, World, by = "name")
+  missing_countries$iso_a3 <- missing_countries$iso3
+  yrs_scale <- left_join(year_papers,missing_countries, by = "iso_a3")%>%
+                         mutate(name = name.x,
+                               region = coalesce(region.x, region.y),
+                               iso2 = coalesce(iso2.x, iso2.y),
+                               iso3 = coalesce(iso3.x, iso3.y),
+                               region = coalesce(region.x, region.y),
+                               yr_loc = coalesce(yr_loc.x, yr_loc.y),
+                               yr_reg = coalesce(yr_reg.x, yr_reg.y),
+                               yr_ntl = coalesce(yr_ntl.x,yr_ntl.y),
+                               yr_mul = coalesce(yr_mul.x,yr_mul.y)
+                               )
+  
+# drop columns with names ending in ".x" and ".y"
+  columns_to_drop <- grepl("\\.x$|\\.y$", names(yrs_scale))
+
+# Remove the identified columns
+  yrs_scale <- yrs_scale[, !columns_to_drop] 
+  
+# convert counts of 0 for each focus to NA
+  yrs_scale$yr_loc <- ifelse(yrs_scale$yr_loc == 0, NA, yrs_scale$yr_loc)
+  yrs_scale$yr_reg <- ifelse(yrs_scale$yr_reg == 0, NA, yrs_scale$yr_reg)
+  yrs_scale$yr_ntl <- ifelse(yrs_scale$yr_ntl == 0, NA, yrs_scale$yr_ntl)
+  yrs_scale$yr_mul <- ifelse(yrs_scale$yr_mul == 0, NA, yrs_scale$yr_mul)
+  
+# get number of countries for which names and ISO3 matched
+  paste(nrow(yrs_scale[!is.na(yrs_scale$region),]),
+        "out of",length(unique(country.yrs$region)),
+        "country names were matchable to the world map")
+```
+
+Next, we make the continental scale map.
+
+```{r year_continent}
+# Get a count of continents
+  continent.yrs <- ddply(study.continent, .(region),
+                         summarize,
+                         ## first year of publication by scale
+                         yr_con = min(year[study_area_scale == "continental"])
+                         )
+
+# add a row with NA for Antarctica
+  continent.yrs[nrow(continent.yrs) + 1,] <- c("Antarctica",NA)
+  
+# change structure
+  continent.yrs$yr_con <- as.integer(continent.yrs$yr_con)
+  
+# view table
+  kableExtra::kbl(continent.yrs, booktabs = T,longtable = T) %>%
+              kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+Next, we make a function for maps to look similar to each other, with the exception of unique legends, using manual breaks.
+
+```{r year_map_funct}
+# create a mapping style function
+  require(tmap)
+  require(RColorBrewer)
+  require(classInt)
+
+# assign color (colorblind-friendly palette from Paul Tol)
+  col.yrs <- colorRampPalette(c('#E8ECFB', '#D9CCE3', '#D1BBD7', '#CAACCB', '#BA8DB4',
+                                '#AE76A3', '#AA6F9E', '#994F88', '#882E72', '#1965B0',
+                                '#437DBF', '#5289C7', '#6195CF', '#7BAFDE', '#4EB265',
+                                '#90C987', '#CAE0AB', '#F7F056', '#F7CB45', '#F6C141',
+                                '#F4A736', '#F1932D', '#EE8026', '#E8601C', '#E65518',
+                                '#DC050C', '#A5170E', '#72190E', '#42150A'))
+  col.yrs <- col.yrs(21)
+
+# custom map function
+  cat_map <- function(data, variable, title, manualbreaks) {
+                      map <- tm_shape(data) +
+                             tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+                             tm_polygons(variable, style = "cont",
+                                         breaks = manualbreaks, # manual breaks
+                                         palette = col.yrs,
+                                         colorNA = 'grey90',
+                                         textNA = "NA",
+                                         title="first year of use",
+                                         legend.is.portrait=FALSE,
+                                         legend.show = TRUE) +
+                             tm_layout(main.title = title,
+                                       main.title.position = c('left','top'),
+                                       main.title.size = 0.75,
+                                       legend.position = c('left','bottom'),
+                                       legend.bg.color = 'white',
+                                       legend.bg.alpha = 0.5,
+                                       legend.title.size = 1,
+                                       legend.height = 0.3,
+                                       legend.width = 0.75,
+                                       legend.text.size = 0.75,
+                                       legend.format=list(fun=function(x) formatC(x,
+                                                              digits=0, format="d")),
+                                       frame = FALSE)
+                      return(map)
+                     }
+```
+
+Make a multi-plot of maps. 
+
+```{r year_map, warning=FALSE, fig.height=3, fig.width=7}
+# example code to get ideas for manual breaks
+  #pretty(c(1,max(yrs_scale$n_loc,na.rm = TRUE)),n=6)
+
+# make maps
+  loc.yr.map <- cat_map(yrs_scale, "yr_loc", "local", seq(2000,2021,5))
+  reg.yr.map <- cat_map(yrs_scale, "yr_reg", "regional", seq(2000,2021,5))
+  ntl.yr.map <- cat_map(yrs_scale, "yr_ntl", "national", seq(2000,2021,5))
+  mul.yr.map <- cat_map(yrs_scale, "yr_mul", "multinational", seq(2000,2021,5))
+  
+# continental scale map
+  # Join data to continent polygons
+    continent.yrs$continent <- continent.yrs$region
+    contyrs <- merge(World, continent.yrs, by = "continent")
+  
+  # Create the map
+    con.yr.map <- cat_map(contyrs, "yr_con", "continental", seq(2000,2021,5))
+  
+# activate to get hex for global scale map if value is between two schemes
+  # pal.glb <- colorRampPalette(colors = c('#90C987','#F7F056'))(3)
+  # scales::show_col(pal.glb)
+  
+# global scale map (single color) with custom legend
+  glb.yr.map <- tm_shape(World) +
+                tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+                tm_fill(col="#A7D295",
+                        title="first year of use",
+                        legend.is.portrait=FALSE) +
+                tm_layout(main.title = paste0("global (first year of use = ",
+                                              min(study.global$year),")"),
+                          main.title.position = c('left','top'),
+                          main.title.size = 0.75,
+                          legend.position = c('left','bottom'),
+                          legend.bg.color = 'white',
+                          legend.bg.alpha = 0.5,
+                          legend.title.size = 1,
+                          legend.height = 0.3,
+                          legend.width = 0.75,
+                          legend.text.size = 0.75,
+                          frame = FALSE)
+
+# compile all together
+  years.fig <- tmap_arrange(loc.yr.map, reg.yr.map,
+                            ntl.yr.map, mul.yr.map,
+                            con.yr.map,
+                            glb.yr.map,
+                            ncol = 3)
+  
+# save figure
+  tmap_save(years.fig, filename = paste0(image.dir,"scale_years_map.png"),
+            height = 3, width = 7, units = 'in',
+            dpi = 600)
+  tmap_save(years.fig, filename = paste0(image.dir,"scale_years_map.svg"),
+            height = 3, width = 7, units = 'in')
+  
+# show here
+  years.fig
+```
+
+# Mapping frequency of predictors by study scale
+
+Here, we map the number of unique predictors per country per spatial scale.
+
+```{r pred_sums}
+# Get a count of countries
+  country.prd <- ddply(study.country, .(region, iso3, iso2),
+                         summarize,
+                         # count of unique predictors for study_area_scale
+                         pr_loc = length(unique(
+                                         predictor[study_area_scale == "local"])),
+                         pr_reg = length(unique(
+                                         predictor[study_area_scale == "regional"])),
+                         pr_ntl = length(unique(
+                                         predictor[study_area_scale == "national"])),
+                         pr_mul = length(unique(
+                                         predictor[study_area_scale == "multinational"]))
+                         )
+```
+
+Next, we match the country names using a worldmap within the tmap package. We make two matching attempts via two data entries: country name and ISO3 code.
+
+```{r pred_coalesce}
+# match country names to world map using names
+  data(World)
+  country.prd$name <- country.prd$region
+  pred_papers <- left_join(World, country.prd, by = "name")
+  
+  
+# rejoin for mismatch via ISO3
+  missing_countries <- anti_join(country.prd, World, by = "name")
+  missing_countries$iso_a3 <- missing_countries$iso3
+  prd_scale <- left_join(pred_papers,missing_countries, by = "iso_a3")%>%
+                         mutate(name = name.x,
+                               region = coalesce(region.x, region.y),
+                               iso2 = coalesce(iso2.x, iso2.y),
+                               iso3 = coalesce(iso3.x, iso3.y),
+                               region = coalesce(region.x, region.y),
+                               pr_loc = coalesce(pr_loc.x, pr_loc.y),
+                               pr_reg = coalesce(pr_reg.x, pr_reg.y),
+                               pr_ntl = coalesce(pr_ntl.x,pr_ntl.y),
+                               pr_mul = coalesce(pr_mul.x,pr_mul.y)
+                               )
+  
+# drop columns with names ending in ".x" and ".y"
+  columns_to_drop <- grepl("\\.x$|\\.y$", names(prd_scale))
+
+# Remove the identified columns
+  prd_scale <- prd_scale[, !columns_to_drop] 
+  
+# convert counts of 0 for each focus to NA
+  prd_scale$pr_loc <- ifelse(prd_scale$pr_loc == 0, NA, prd_scale$pr_loc)
+  prd_scale$pr_reg <- ifelse(prd_scale$pr_reg == 0, NA, prd_scale$pr_reg)
+  prd_scale$pr_ntl <- ifelse(prd_scale$pr_ntl == 0, NA, prd_scale$pr_ntl)
+  prd_scale$pr_mul <- ifelse(prd_scale$pr_mul == 0, NA, prd_scale$pr_mul)
+  
+# get number of countries for which names and ISO3 matched
+  paste(nrow(prd_scale[!is.na(prd_scale$region),]),
+        "out of",length(unique(country.prd$region)),
+        "country names were matchable to the world map")
+```
+
+Next, we make the continental scale map.
+
+```{r pred_continent}
+# Get a count of continents
+  continent.prd <- ddply(study.continent, .(region),
+                         summarize,
+                         # count of unique predictors for study_area_scale
+                         pr_con = length(unique(
+                                         predictor[study_area_scale == "continental"]))
+                         )
+
+# add a row with NA for Antarctica
+  continent.prd[nrow(continent.prd) + 1,] <- c("Antarctica",NA)
+  
+# change structure
+  continent.prd$pr_con <- as.integer(continent.prd$pr_con)
+  
+# view table
+  kableExtra::kbl(continent.prd, booktabs = T,longtable = T) %>%
+              kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+Next, we make a function for maps to look similar to each other, with the exception of unique legends, using manual breaks.
+
+```{r pred_map_funct}
+# create a mapping style function
+  require(tmap)
+  require(RColorBrewer)
+  require(classInt)
+
+# assign color (colorblind-friendly palette from Paul Tol)
+  col.prd <- colorRampPalette(c('#E8ECFB', '#D9CCE3', '#D1BBD7', '#CAACCB', '#BA8DB4',
+                                '#AE76A3', '#AA6F9E', '#994F88', '#882E72', '#1965B0',
+                                '#437DBF', '#5289C7', '#6195CF', '#7BAFDE', '#4EB265',
+                                '#90C987', '#CAE0AB', '#F7F056', '#F7CB45', '#F6C141',
+                                '#F4A736', '#F1932D', '#EE8026', '#E8601C', '#E65518',
+                                '#DC050C', '#A5170E', '#72190E', '#42150A'))
+  col.prd <- col.prd(8)
+
+# map function
+  cat_map <- function(data, variable, title, manualbreaks) {
+                      map <- tm_shape(data) +
+                             tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+                             tm_polygons(variable, style = "cont",
+                                         breaks = manualbreaks,
+                                         palette = col.prd,
+                                         colorNA = 'grey90',
+                                         textNA = "NA",
+                                         title="no. predictors",
+                                         legend.is.portrait=FALSE) +
+                             tm_layout(main.title = title,
+                                       main.title.position = c('left','top'),
+                                       main.title.size = 0.75,
+                                       legend.position = c('left','bottom'),
+                                       legend.bg.color = 'white',
+                                       legend.bg.alpha = 0.5,
+                                       legend.title.size = 1,
+                                       legend.height = 0.3,
+                                       legend.width = 0.75,
+                                       legend.text.size = 0.75,
+                                       legend.format=list(fun=function(x) formatC(x,
+                                                              digits=0, format="d")),
+                                       frame = FALSE)
+                      return(map)
+                     }
+```
+
+Make a multi-plot of maps. 
+
+```{r pred_map, warning=FALSE}
+# make maps
+  loc.pr.map <- cat_map(prd_scale, "pr_loc", "local",
+                        pretty(c(1,max(prd_scale$pr_loc,na.rm = TRUE)),n=8))
+  reg.pr.map <- cat_map(prd_scale, "pr_reg", "regional",
+                        pretty(c(1,max(prd_scale$pr_reg,na.rm = TRUE)),n=8))
+  ntl.pr.map <- cat_map(prd_scale, "pr_ntl", "national",
+                        pretty(c(1,max(prd_scale$pr_ntl,na.rm = TRUE)),n=8))
+  mul.pr.map <- cat_map(prd_scale, "pr_mul", "multinational",
+                        pretty(c(1,max(prd_scale$pr_mul,na.rm = TRUE)),n=8))
+  
+# continental scale map
+  # Join data to continent polygons
+    continent.prd$continent <- continent.prd$region
+    contprd <- merge(World, continent.prd, by = "continent")
+  
+  # Create the map
+    con.pr.map <- cat_map(contprd, "pr_con", "continental", c(0,1,5,10,20,30,60))
+  
+# global scale map (single color) with custom legend
+  glb.pr.map <- tm_shape(World) +
+                tm_borders("#d0cbcb", alpha = 1, lwd = 0.5) +
+                tm_fill(col='#42150A',
+                        title="first year of use",
+                        legend.is.portrait=FALSE) +
+                tm_layout(main.title = paste0("global (no. predictors = ",
+                                              length(unique(study.global$predictor)),")"),
+                          main.title.position = c('left','top'),
+                          main.title.size = 0.75,
+                          legend.position = c('left','bottom'),
+                          legend.bg.color = 'white',
+                          legend.bg.alpha = 0.5,
+                          legend.title.size = 1,
+                          legend.height = 0.3,
+                          legend.width = 0.75,
+                          legend.text.size = 0.75,
+                          frame = FALSE)
+
+# compile all together
+  preds.fig <- tmap_arrange(loc.pr.map, reg.pr.map,
+                            ntl.pr.map, mul.pr.map,
+                            con.pr.map,
+                            glb.pr.map,
+                            ncol = 3)
+  
+# save figure
+  tmap_save(preds.fig, filename = paste0(image.dir,"scale_predictors_map.png"),
+            height = 3, width = 7, units = 'in',
+            dpi = 600)
+  tmap_save(preds.fig, filename = paste0(image.dir,"scale_predictors_map.svg"),
+            height = 3, width = 7, units = 'in')
+  
+# show here
+  preds.fig
+```
+
+# SDM algorithm use across articles
+
+Here, we edit and summarize SDM algorithm use. First, we make a subset dataframe.
+
+```{r sdm_subset}
+# Extract table and predictors from relevant papers
+  sdm.df <- subset(yes.df,
+                   select = c("uid","SDM_algorithm","SDM_algorithm_ensembles"))
+```
+
+Edit algorithm names.
+
+```{r sdm_edits}
+# expand rows
+  sdm.df <- separate_rows(sdm.df, SDM_algorithm_ensembles, sep="; ",convert = TRUE)
+
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+                "maxent" = "Maxent",
+                "MAXENT" = "Maxent",
+                "Maxnet" = "Maxent", #maxnet is open-access Maxent
+                "favorability_model" = "favorability_function",
+                "Bayesian_inference" = "hierarchical_model",
+                "GLMM" = "hierarchical_model",
+                "GAMM" = "hierarchical_model",
+                "n-dimensional_hypervolume" = "hierarchical_model",
+                "regression_tree" = "BRT",
+                "bagged_decision_tree" = "BRT",
+                "recursive_partitioning" = "CART",
+                "TreeNet" = "GBM",
+                "linear_regression" = "GLM",
+                "multiplicative_regression"= "GLM",
+                "probit_regression"= "GLM",
+                "Mahalnobis_distance" = "Mahalanobis_distance",
+                "Mahalanobis_Distance" = "Mahalanobis_distance",
+                "Maxlike" = "MaxLike",
+                "multiplicative_regression" = "GLM",
+                "Domain" = "DOMAIN",
+                "Gower_distance" = "DOMAIN",
+                "BIOCLIM" = "SRE",
+                "SER" = "SRE",
+                "occupancy_model" = "Occupancy_model",
+                "hierarchical_model" = "Hierarchical_model",
+                "favorability_function" = "Favorability_function",
+                "Favorability_function" = "Favorability",
+                "logistic_regression" = "Logistic_regression",
+                "Logistic_regression" = "GLM",
+                "RSF" = "GLM",
+                "CART" = "CTA",
+                "Occupancy_model" = "Hierarchical_model",
+                "MaxLike" = "Hierarchical_model",
+                "Hierarchical_model" = "Hierarchical",
+                "MDA" = "DA",
+                "FDA" = "DA",
+                "Penrose_distance" = "Mahalanobis_distance",
+                "Mahalanobis_distance" = "Mahalanobis"
+                )
+
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    sdm.df <- data.frame(lapply(sdm.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# remove underscores
+  sdm.df <- data.frame(lapply(sdm.df, function(x) {gsub("_"," ", x)}))
+  
+# convert blank to NA
+  sdm.df$SDM_algorithm_ensembles[sdm.df$SDM_algorithm_ensembles==''] <- NA
+  
+# remove duplicates
+  sdm.df <- sdm.df[-duplicated(sdm.df),]
+  
+# get new counts
+  length(unique(sdm.df$SDM_algorithm));
+  length(unique(sdm.df$SDM_algorithm_ensembles))
+```
+
+Get summaries
+
+```{r sdm_summary}
+# summary of SDM algorithms
+  summary(as.factor(sdm.df$SDM_algorithm))
+```
+
+```{r sdm_ensembles}
+# summary of SDM ensembles
+  summary(as.factor(sdm.df$SDM_algorithm_ensembles))
+```
+
+## Summary table of SDM algorithm use
+
+First, make a new table with a column for all algorithms
+
+```{r sdm_table}
+# make subsets
+  sdm.single.df <- subset(sdm.df,
+                          select = c("uid","SDM_algorithm"))
+  sdm.ensemb.df <- subset(sdm.df,
+                          select = c("uid","SDM_algorithm_ensembles"))
+  
+# rename columns
+  colnames(sdm.single.df)[2] <- "SDM"
+  colnames(sdm.ensemb.df)[2] <- "SDM"
+  
+# remove NA's, multiples, and ensembles
+  sdm.single.df <- sdm.single.df[!is.na(sdm.single.df$SDM),]
+  sdm.single.df <- sdm.single.df[!sdm.single.df$SDM=='multiple',]
+  sdm.single.df <- sdm.single.df[!sdm.single.df$SDM=='ensemble',]
+  sdm.ensemb.df <- sdm.ensemb.df[!is.na(sdm.ensemb.df$SDM),]  
+
+# rbind
+  sdm.all.df <- rbind(sdm.single.df,sdm.ensemb.df)
+
+# remove duplicates
+  sdm.all.df <- sdm.all.df[-duplicated(sdm.all.df),]
+  
+# manually add one row that is missing
+  uid18.df <- sdm.single.df[sdm.single.df$uid==18,]
+  sdm.all.df <- rbind(uid18.df,sdm.all.df)
+
+# ensure number of articles matches accepted articles
+  #anti_join(yes.df,sdm.all.df,by='uid')
+  length(unique(sdm.all.df$uid)) == length(unique(yes.df$uid))
+```
+
+## Plot of SDM algorithm use
+
+Next, get sum of papers per algorithm and visualize as a bar plot (% of articles)
+
+```{r sdm_plot}
+# get summary
+  sdm.sums <- ddply(sdm.all.df, .(SDM),
+                    summarize,
+                    # number of articles
+                    n_papers = length(unique(uid)),
+                    # percent of articles
+                    perc_papers = round(length(unique(uid))/length(unique(yes.df$uid)),4)
+                    )
+
+# make lollipop plot, ranked from most- to least- used SDM
+  sdm.fig <- sdm.sums %>%
+                arrange(perc_papers) %>%    # sort by value
+                mutate(SDM=factor(SDM, levels=SDM)) %>%   # update the factor levels
+                ggplot(aes(x=SDM, y=perc_papers*100)) +
+                  geom_segment(aes(xend=SDM, yend=0)) +
+                  geom_point(size=3, color="#882E72") +
+                  ylim(0,50) +
+                  scale_y_continuous(breaks = seq(0,50,10)) +
+                  coord_flip() +
+                  theme_bw() +
+                  xlab("")+ ylab("percent of articles")
+
+# save
+  ggsave(plot=sdm.fig, filename = paste0(image.dir,'SDM_algorithm_use.png'),
+         height = 4, width = 7, units = 'in', dpi = 600)
+  ggsave(plot=sdm.fig, filename = paste0(image.dir,'SDM_algorithm_use.svg'),
+         height = 4, width = 7, units = 'in')
+  
+# view here
+  sdm.fig
+```
+
+# Final dataset for export
+
+Here, we prepare the final dataset for the article's appendix. We'll be using the following items for compiling:
+
+- rev.df (list of all articles)
+- yes.df (list of accepted articles)
+- preds.list.export (list of predictors, including edited domain, taxa, and study focus names)
+- study.area.all (table of edited study area names)
+- amb.df (table of counts of ambiguous predictors)
+
+First, we will work with all the relevant articles, then we will add the semi-relevant and not relevant ones to the list.
+
+```{r final_dataset}
+# extract columns of interest from yes.df
+  final.df.yes <- subset(yes.df,
+                         select=c('uid','year','title','author','journal',
+                                  'relevant',
+                                  'time','hum_time','time_start','time_end',
+                                  'future_time_start','future_time_end',
+                                  'ttl_species',
+                                  'num_env_preds','num_hum_preds',
+                                  'worldclim','qual_eval'
+                                  ))
+  final.df.yes$uid <- as.character(final.df.yes$uid)
+
+# collapse predictor list items
+  final.df.vars <-  ddply(prdotf.list.long, .(uid,study_focus),
+                          summarize,                          
+                          # list of domains studied
+                          domain=paste(unique(domain),collapse="; "),
+                          # list of taxa studied
+                          taxa=paste(unique(taxa),collapse="; "),
+                          # list of predictors used
+                          hum_preds=paste(unique(predictor),collapse="; "),
+                          # list of data types used
+                          hum_pred_type=paste(unique(study_focus),collapse="; "),
+                          # list of data categories
+                          hum_pred_cat=paste(unique(category),collapse="; "))
+  final.df.vars$uid <- as.character(final.df.vars$uid)
+  
+# collapse study area names
+  final.df.areas <-  ddply(study.area.all, .(uid),
+                           summarize,                          
+                           # list of scales
+                           study_area_scale=paste(unique(study_area_scale),collapse="; "),
+                           # list of countries
+                           study_area_country=paste(unique(region),collapse="; ")
+                           )
+  final.df.areas$uid <- as.character(final.df.areas$uid)
+  
+# collapse SDM algorithm names
+  final.df.sdms <-  ddply(sdm.df, .(uid),
+                          summarize,                          
+                          # list of scales
+                          SDM_algorithm=paste(unique(SDM_algorithm),collapse="; "),
+                          # list of countries
+                          SDM_algorithm_ensembles=paste(unique(SDM_algorithm_ensembles),
+                                                       collapse="; ")
+                         )
+  final.df.sdms$uid <- as.character(final.df.sdms$uid)
+  
+# count of ambiguous predictors and indicator column
+  final.df.amb <- data.frame(uid=amb.df$uid,amb_pred='yes',ttl_amb_pred=amb.df$amb_count)
+  final.df.amb <- final.df.amb[!duplicated(final.df.amb$uid),]
+  final.df.amb$uid <- as.character(final.df.amb$uid)
+  
+# left joins
+  final.df <- left_join(final.df.yes,final.df.areas, by='uid')
+  final.df <- left_join(final.df,final.df.vars, by='uid')
+  final.df <- left_join(final.df,final.df.amb, by='uid')
+  final.df <- left_join(final.df,final.df.sdms, by='uid')
+  
+# edit empty ambiguous field
+  final.df$amb_pred[is.na(final.df$amb_pred)] <- 'no'
+
+# remove duplicated rows
+  final.df <- final.df[!duplicated(final.df),]
+  
+# preview dataframe
+  head(final.df)
+```
+
+Next are the semi-relevant and non-relevant articles to append as new rows.
+
+```{r final_relevance}
+# semi-relevant articles
+  final.df.semi <- rev.df[rev.df$relevant=='semi',]
+  final.df.semi <- subset(final.df.semi,
+                          select=c('uid','year','title','author','journal','relevant'))
+  
+# non-relevant articles
+  final.df.no <- rev.df[rev.df$relevant=='no',]
+  final.df.no <- subset(final.df.no,
+                          select=c('uid','year','title','author','journal','relevant'))
+  
+# unknown articles
+  final.df.unk <- rev.df[rev.df$relevant=='UNK',]
+  final.df.unk <- subset(final.df.unk,
+                          select=c('uid','year','title','author','journal','relevant'))
+  
+# bind rows
+  final.df$uid <- as.integer(final.df$uid)
+  final.df <- bind_rows(final.df,final.df.semi, final.df.no,final.df.unk)  
+```
+
+Double-check the number of articles, confirming that they match original input:
+
+```{r}
+# check number of articles to match original
+  length(unique(final.df$uid)) == length(unique(rev.df$uid))
+```
+
+Next, we re-organize the columns and rename a few of them.
+
+```{r final_rearrange}
+# relocate
+# use colname = newcolname notation for renaming
+  final.df <- relocate(final.df,
+                       study_focus, study_area_scale, study_area_country,
+                       .before = time)
+  final.df <- relocate(final.df,
+                       taxa,
+                       .before = ttl_species)
+  final.df <- relocate(final.df,
+                       domain = domain,SDM_algorithm,SDM_algorithm_ensembles,
+                       .after = ttl_species)
+  final.df <- relocate(final.df,
+                       hum_preds, hum_pred_type, hum_pred_cat,
+                       hum_amb_preds = amb_pred,
+                       num_env_preds, num_hum_preds,
+                       num_amb_preds = ttl_amb_pred,
+                       hum_pred_cat,
+                       .after = SDM_algorithm_ensembles)
+  
+  colnames(final.df)
+```
+
+Change all blank fields to NA.
+
+```{r final_NAs}
+# change NAs to blank
+  final.df[final.df == ''] <- NA
+  final.df$SDM_algorithm_ensembles[final.df$SDM_algorithm_ensembles == 'NA'] <- NA
+```
+
+```{r, eval=FALSE, echo=FALSE}
+# preview table
+  options(width = 85)
+  head(final.df)
+```
+
+Save the table as a CSV.
+
+```{r final_csv}
+# save
+  write.csv(final.df,paste0(data.dir,"lit_review_dataframe_FINAL.csv"),
+            row.names = FALSE)
+```
+
+# Save
+
+```{r save}
+# save progress
+  save.image("SDMs_human_lit_review_IV.RData")
+```
+
+-------------------------------------------------------
+
+**_THIS IS THE END OF THE SCRIPT._**
+
+**_See "Human Influence in SDMs: Literature Review (Part V)" for next steps._**
+
+---------------------------------------------------------

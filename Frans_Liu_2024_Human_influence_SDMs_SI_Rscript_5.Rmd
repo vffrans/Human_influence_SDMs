@@ -1,0 +1,426 @@
+---
+title: 'Human Influence in SDMs: Literature Review (Part V)'
+author: 'Veronica F. Frans (email: verofrans@gmail.com)'
+date: 'February 3, 2024'
+output:
+  pdf_document:
+    fig_height: 5
+    fig_width: 8
+    keep_tex: yes
+    number_sections: yes
+    toc: yes
+    toc_depth: 4
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    toc_depth: 4
+  word_document:
+    toc: yes
+    toc_depth: '4'
+header-includes:
+- \usepackage{pdflscape}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \fancyhead[CO,CE]{Supporting Information}
+- \fancyhead[LO,LE]{Frans and Liu 2024}
+- \fancyhead[RO,RE]{Human Influence in SDMs}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, cache.comments = TRUE,
+                      warning= FALSE, message = FALSE, tinytex.verbose = TRUE,
+                      knitr.table.format = "html")
+```
+
+\newpage
+
+# Summary
+
+This is the fifth R script of the literature review and synthesis for the article entitled, "Gaps and opportunities in modeling human influence on species distributions in the Anthropocene," by Veronica F. Frans and Jianguo Liu.
+
+Here, in Part V of the synthesis, we use the CSV files of the predictor list from Part III to evaluate whether some of the human predictors used by authors are relevant for monitoring the United Nations Sustainable Development Goals (SDGs). This assessment is appended to the predictor list for access in the Supporting Information.
+
+Thus, the following is accomplished:
+
+(1) Matching of predictor names with the 17 SDGs
+(2) Summary of predictor use across SDGs and papers
+(3) Plots of SDGs by paper and predictor
+(4) Final export of predictor list with SDGs included
+
+This is the final R script for this study.
+
+# R Setup
+
+We are using R version 4.3.0 (R Core Team 2023). 
+
+## Libraries
+
+Load libraries
+
+```{r packages, results='hide', message=FALSE, warning=FALSE}
+# load libraries
+  library("dplyr")         # for table manipulations
+  library("scales")        # for scales and formatting
+  library("kableExtra")    # for table viewing in Rmarkdown
+  library("tidyr")         # for table manipulations
+  library("plyr")          # for table manipulations
+  library("tidyverse")     # for graphics/table management
+  library("ggplot2")       # for graphics
+  library("RColorBrewer")  # for graphics
+  library("ggforce")       # for graphics (speeds up ggplot)
+  library("ggalluvial")    # for graphics
+  library("ggbreak")       # for graphics
+  library("patchwork")     # for graphics
+  library("ggExtra")       # for graphics
+  library("ggrepel")       # for labeling
+  library("plotfunctions") # for data visualization
+  library("svglite")       # for saving graphics in svg format
+  library("SDGdetector")   # for text-mining SDGs
+  library("text2sdg")      # for text-mining SDGs
+```
+
+## Directories
+
+The primary directory is the folder where the `hum_sdm_litrv_r.Rproj` is stored.
+
+```{r directories, warning=FALSE, results='hide'}
+
+# create image folder and its directory
+  dir.create(paste0("images"))
+  image.dir <- paste0("images\\")
+
+# create data folder and its directory
+  dir.create(paste0("data"))
+  data.dir <- paste0("data\\")
+```
+
+## Load data
+
+Upload the data table from the abstract screening and review, and subset to only the articles that are accepted. We will also need a few saved CSV files from Part II.
+
+```{r load}
+# study domain, taxa, and focus
+  domtaxfoc.df <- read.csv(paste0(data.dir,"domain_taxa_focus_count_papers.csv"),
+                           header=T, sep=",")
+  
+# predictor list
+  preds.list.export <- read.csv(paste0(data.dir,"predictor_list_summary_FINAL.csv"),
+                                header=T, sep=",")
+```
+
+# Classify SDGs across predictors
+
+We use the `text2sdg` package to match predictors with the 17 SDGs. Because this packages normally works with an entire corpus, the analysis is instead done row by row (i.e., per predictor), treating each predictor as a corpus. Row by row, names and sums of SDGs are extracted. Note that this takes at least 9 hours to run.
+
+```{r SDG_classify, eval=FALSE}
+# Record start time
+  start_time <- proc.time()
+
+# Run SDG scan for all predictor rows
+  output <- lapply(preds.list.export$predictor, detect_sdg, verbose=FALSE)
+
+# Combine results and add predictor column
+  preds.sdgs <- data.frame(
+                           predictor = preds.list.export$predictor,
+                           sdg = sapply(output, function(x)paste(unique(x$sdg),
+                                                                  collapse = "; ")),
+                           count_sdgs = sapply(output,
+                                               function(x)length(unlist(strsplit(x$sdg,";"))))
+                          )
+
+# Optionally, if you need to order the rows by the predictor column
+  preds.sdgs <- preds.sdgs[order(preds.sdgs$predictor), ]
+
+# Reset row names if desired
+  row.names(preds.sdgs) <- NULL
+
+# Output the combined result
+  preds.sdg.export <- preds.sdgs
+  
+# save as CSV
+  write.csv(preds.sdg.export, paste0(data.dir,"predictors_and_SDGs.csv"),row.names=FALSE)
+  
+# Record end time
+  end_time <- proc.time()
+
+# Calculate the runtime
+  runtime <- end_time - start_time
+  runtime/60/60
+```
+```{}
+       user      system     elapsed 
+ 7.03329444  0.09487778 11.69226111 
+```
+
+## Plot SDG relevance across human predictors
+
+Next, we calculate the sum and percents of predictors per SDG.
+
+```{r sdg_sums}
+# extend list of SDGs per predictor
+  preds.sdg.long <- separate_rows(preds.sdg.export, sdg, sep="; ",convert = TRUE)
+
+# summary list of predictor counts per SDG
+  sdg_sums <- ddply(preds.sdg.long, .(sdg),
+                    summarize,
+                    # count of predictors
+                    num_preds=length(unique(predictor)),
+                    # percent of predictors
+                    perc_preds=round(length(unique(
+                      predictor))/nrow(preds.list.export)*100,4),
+                    # list of predictors
+                    predictors=paste(unique(predictor),collapse="; ")
+                    )
+  
+# show summary here (predictors not shown)
+  kableExtra::kbl(sdg_sums[,1:3], booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+Add missing SDGs to the list.
+
+```{r sdg_sums_all}
+# remove the NA field
+  sdg_only <- sdg_sums[!sdg_sums$sdg=='',]
+
+# add SDGs that are missing
+  missing_sdgs <- data.frame(sdg=c("SDG-05","SDG-10","SDG-16","SDG-17"),
+                             num_preds=0,
+                             perc_preds=0,
+                             predictors="")
+
+# combine and re-sort
+  sdg_only <- rbind(sdg_only,missing_sdgs)
+  sdg_only <- sdg_only[order(sdg_only$sdg),]
+  
+# show summary here (predictors not shown)
+  kableExtra::kbl(sdg_only[,1:3], booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+Plot summary
+
+```{r sdg_plot, fig.height = 5, fig.width = 9}
+# SDG colors (taken from SDGdetector package)
+  color_rgb <- data.frame(
+      R = c(229, 221, 76, 197, 255, 38, 252, 162, 253, 221, 253, 191, 63, 10, 86, 0, 25),
+      G = c(36, 166, 159, 25, 58, 189, 195, 25, 105, 19, 157, 139, 126, 141, 192, 104, 72),
+      B = c(59, 58, 56, 45, 33, 226, 11, 66, 37, 103, 36, 46, 68, 217, 43, 157, 106)
+    )
+  
+    ### HEX
+    color_hex <- rgb(color_rgb, maxColorValue = 255)
+    names(color_hex) <- sdg_only$sdg
+    sdg_color <- function(x) {
+                              color <- color_hex[x]
+                              return(color)
+                              }
+
+# plot
+  sdg.plt <- ggplot(data=sdg_only, aes(x=sdg, y=perc_preds, fill=sdg)) +
+                    scale_fill_manual(values = sdg_color(x = 1:17)) +
+                    geom_bar(stat="identity") +
+                    geom_text(aes(label=paste0(round(perc_preds,2),'%')), 
+                              vjust=-0.3, size=3.5) +
+                    ylab('percent of predictors') +
+                    xlab('Sustainable Development Goals')+ 
+                    theme_minimal() +
+                    theme(legend.position = "none") +
+                    ggtitle('A. Predictors')
+  
+# save
+  ggsave(plot=sdg.plt, filename = paste0(image.dir,'sdg_bar_plot.png'),
+         height = 5, width = 9, units = 'in', dpi = 600)
+  ggsave(plot=sdg.plt, filename = paste0(image.dir,'sdg_bar_plot.svg'),
+         height = 5, width = 9, units = 'in')
+  
+# view
+  sdg.plt
+```
+## Total predictors related to SDGs
+
+```{r sdg_total_preds}
+# get summary
+  paste(nrow(preds.sdg.export[preds.sdg.export$count_sdgs>0,]),
+        "out of",
+        nrow(preds.sdg.export),
+        "predictors",
+        "are related to Sustainable Development Goals")
+```
+
+## Summarize predictor use compared to number of articles
+
+Next, we calculate the sum and percents of papers per SDG.
+
+```{r sdg_sums_papers}
+# append article numbers to predictors
+  preds.sdg.papers <- left_join(preds.list.export, preds.sdg.export,
+                                by='predictor')
+
+# extend list by SDGs per predictor
+  preds.sdg.papers <- separate_rows(preds.sdg.papers, sdg, sep="; ", convert = TRUE)
+
+# extend list by paper per predictor
+  preds.sdg.papers <- separate_rows(preds.sdg.papers, uid, sep="; ", convert = TRUE)
+
+# summary list of predictor counts per SDG
+  sdg_paper_sums <- ddply(preds.sdg.papers, .(sdg),
+                          summarize,
+                          # count of papers
+                          num_papers=length(unique(uid)),
+                          # percent of papers
+                          perc_papers=round(
+                            length(unique(uid))/length(unique(
+                              preds.sdg.papers$uid))*100,4),
+                          # list of predictors
+                          predictors=paste(unique(predictor),collapse="; ")
+                          )
+
+# show summary here (predictors not shown)
+  kableExtra::kbl(sdg_paper_sums[,1:3], booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+Add missing SDGs to the list.
+
+```{r sdg_sums_papers_all}
+# remove the NA field
+  sdg_paper_only <- sdg_paper_sums[!sdg_paper_sums$sdg=='',]
+
+# add SDGs that are missing
+  missing_sdgs <- data.frame(sdg=c("SDG-05","SDG-10","SDG-16","SDG-17"),
+                             num_papers=0,
+                             perc_papers=0,
+                             predictors="")
+
+# combine and re-sort
+  sdg_paper_only <- rbind(sdg_paper_only,missing_sdgs)
+  sdg_paper_only <- sdg_paper_only[order(sdg_paper_only$sdg),]
+  
+# show summary here (predictors not shown)
+  kableExtra::kbl(sdg_paper_only[,1:3], booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header"))  
+```
+
+Plot summary
+
+```{r sdg_papers_plot, fig.height = 5, fig.width = 9}
+# plot
+  sdgp.plt <- ggplot(data=sdg_paper_only, aes(x=sdg, y=perc_papers, fill=sdg)) +
+                     scale_fill_manual(values = sdg_color(x = 1:17)) +
+                     geom_bar(stat="identity") +
+                     geom_text(aes(label=paste0(round(perc_papers,2),'%')), 
+                               vjust=-0.3, size=3.5) +
+                     ylab('percent of articles') + xlab('Sustainable Development Goals')+ 
+                     theme_minimal() +
+                     theme(legend.position = "none") +
+                     ggtitle('B. Articles')
+  
+# save
+  ggsave(plot=sdgp.plt, filename = paste0(image.dir,'sdg_papers_bar_plot.png'),
+         height = 5, width = 9, units = 'in', dpi = 600)
+  ggsave(plot=sdgp.plt, filename = paste0(image.dir,'sdg_papers_bar_plot.svg'),
+         height = 5, width = 9, units = 'in')
+  
+# view
+  sdgp.plt
+```
+## Total papers related to SDGs
+
+```{r sdg_preds_total_papers}
+# get summary
+  paste(length(unique(preds.sdg.papers$uid[preds.sdg.papers$count_sdgs>0])),
+        "out of",
+        length(unique(preds.sdg.papers$uid)),
+        "papers",
+        "use human predictors related to Sustainable Development Goals")
+```
+
+# Combined plot
+
+We turn these plots into a scatterplot, with the number of predictors related to SDGs on the x-axis, and the number of papers using those predictors on the y-axis.
+
+```{r sdg_plot_scatter} 
+# make a new dataframe
+  sdg_summary <- data.frame(sdg=sdg_only$sdg,
+                            num_preds=sdg_only$num_preds,
+                            perc_preds=sdg_only$perc_preds,
+                            num_papers=sdg_paper_only$num_papers,
+                            perc_papers=sdg_paper_only$perc_papers)
+
+# label the top 6 SDGs
+  sdg_summary$labs <- ''
+  sdg_summary$labs[sdg_summary$sdg=='SDG-01'] <- 'SDG-1'
+  sdg_summary$labs[sdg_summary$sdg=='SDG-02'] <- 'SDG-2'
+  sdg_summary$labs[sdg_summary$sdg=='SDG-06'] <- 'SDG-6'
+  sdg_summary$labs[sdg_summary$sdg=='SDG-11'] <- 'SDG-11'
+  sdg_summary$labs[sdg_summary$sdg=='SDG-14'] <- 'SDG-14'
+  sdg_summary$labs[sdg_summary$sdg=='SDG-15'] <- 'SDG-15'
+
+# plot
+  sdg_pts <- ggplot(sdg_summary,
+                    aes(x=num_preds, y=num_papers, color=sdg, label=labs)) +
+                    geom_point(color=sdg_color(x = 1:17), size = 4, guide = FALSE) +
+                    scale_fill_manual(values = sdg_color(x = 1:17)) +
+                    geom_label_repel(aes(label = labs),
+                                     box.padding   = 0.35, 
+                                     point.padding = 1,
+                                     segment.color = 'black',
+                                     segment.size = 0.5,
+                                     color = 'black',
+                                     min.segment.length = 0.1) +
+                    ylab('no. articles') + xlab('no. human predictors') +
+                    scale_x_continuous(breaks = seq(0,300,50)) +
+                    theme_bw()
+
+# save
+  ggsave(plot=sdg_pts, filename = paste0(image.dir,'sdg_scatterplot.png'),
+         height = 4, width = 6, units = 'in', dpi = 600)
+  ggsave(plot=sdg_pts, filename = paste0(image.dir,'sdg_scatterplot.svg'),
+         height = 4, width = 6, units = 'in')
+  
+# view
+  sdg_pts
+```
+
+# Append SDGs to predictor list dataset
+
+We add the SDG names and counts to the existing predictor list dataset, for export and use in Supporting Information. 
+
+```{r pred_list_update}
+# append article numbers to predictors
+  preds.sdg.papers.export <- left_join(preds.list.export, preds.sdg.export,
+                                       by='predictor')
+
+# reorder columns
+# use colname = newcolname notation for renaming
+  preds.sdg.papers.export <- relocate(preds.sdg.papers.export,
+                                      sdg,
+                                      .after = uid)
+  preds.sdg.papers.export <- relocate(preds.sdg.papers.export,
+                                      count_sdgs,
+                                      .after = sdg)
+  
+# rename column
+  colnames(preds.sdg.papers.export)[10] <- "count_papers"
+
+# save
+  write.csv(preds.sdg.papers.export,paste0(data.dir,"predictor_SDG_list_summary_FINAL.csv"),
+            row.names = FALSE)
+```
+
+# Save
+
+```{r save]}
+# save progress
+  save.image("SDMs_human_lit_review_V.RData")
+```
+
+-------------------------------------------------------
+
+**_THIS IS THE END OF THE SCRIPT._**
+
+---------------------------------------------------------

@@ -1,0 +1,2902 @@
+---
+title: 'Human Influence in SDMs: Literature Review (Part III)'
+author: 'Veronica F. Frans (email: verofrans@gmail.com)'
+date: 'February 1, 2024'
+output:
+  pdf_document:
+    fig_height: 5
+    fig_width: 8
+    keep_tex: yes
+    number_sections: yes
+    toc: yes
+    toc_depth: 4
+  html_document:
+    toc: yes
+    toc_float: yes
+    number_sections: yes
+    toc_depth: 4
+  word_document:
+    toc: yes
+    toc_depth: '4'
+header-includes:
+- \usepackage{pdflscape}
+- \newcommand{\blandscape}{\begin{landscape}}
+- \newcommand{\elandscape}{\end{landscape}}
+- \usepackage{fancyhdr}
+- \pagestyle{fancy}
+- \fancyhead[CO,CE]{Supporting Information}
+- \fancyhead[LO,LE]{Frans and Liu 2024}
+- \fancyhead[RO,RE]{Human Influence in SDMs}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, cache.comments = TRUE,
+                      warning= FALSE, message = FALSE, tinytex.verbose = TRUE,
+                      knitr.table.format = "html")
+```
+
+\newpage
+
+# Summary
+
+This is the third R script of the literature review and synthesis for the article entitled, "Gaps and opportunities in modeling human influence on species distributions in the Anthropocene," by Veronica F. Frans and Jianguo Liu.
+
+Here, in Part III of the qualitative synthesis, the following is accomplished:
+
+(1) Cleanup, simplification, and synthesis of human predictor names across articles
+(2) Summary of predictor use across articles, categories, and data types
+(3) Summary of ambiguous predictors
+(4) Summary of buffered predictors
+(5) Summary of study vs. human predictor time frames
+(6) Plot of first and last years of predictor use
+(7) CSV file export of predictor name list
+
+The next script (Part IV) uses the CSV file of the systematic review to get a global context for human predictor use in SDMs through maps.
+
+# R Setup
+
+We are using R version 4.3.0 (R Core Team 2023). 
+
+## Libraries
+
+Load libraries
+
+```{r packages, results='hide', message=FALSE, warning=FALSE}
+# load libraries
+  library("dplyr")         # for table manipulations
+  library("scales")        # for scales and formatting
+  library("kableExtra")    # for table viewing in Rmarkdown
+  library("tidyr")         # for table manipulations
+  library("plyr")          # for table manipulations
+  library("tidyverse")     # for graphics/table management
+  library("ggplot2")       # for graphics
+  library("RColorBrewer")  # for graphics
+  library("alluvial")      # for graphics
+  library("ggforce")       # for graphics (speeds up ggplot)
+  library("ggalluvial")    # for graphics
+  library("ggbreak")       # for graphics
+  library("patchwork")     # for graphics
+  library("migest")        # for graphics (chord diagram)
+  library("circlize")      # for graphics (chord diagram)
+  library("chorddiag")     # for graphics (chord diagram)
+  library("raster")        # for mapping
+  library("rgdal")         # for mapping
+  library("sp")            # for mapping
+  library("ggmap")         # for mapping and graphics
+  library("maps")          # for mapping
+  library("plotfunctions") # for data visualization
+  library("svglite")       # for saving graphics in svg format
+
+```
+
+## Directories
+
+The primary directory is the folder where the `hum_sdm_litrv_r.Rproj` is stored.
+
+```{r directories, warning=FALSE, results='hide'}
+
+# create image folder and its directory
+  dir.create(paste0("images"))
+  image.dir <- paste0("images\\")
+
+# create data folder and its directory
+  dir.create(paste0("data"))
+  data.dir <- paste0("data\\")
+```
+
+## Load data
+
+Upload the data table from the abstract screening and review, and subset to only the articles that are accepted. We will also need a few saved CSV files from Part II.
+
+```{r load}
+# full article screening and review table
+  # read CSV
+    rev.df <- read.csv(paste0(data.dir,"hum_sdm_lit_review_RAW.csv"),
+                          header=T, sep=",")
+
+  # subset only accepted papers (after year 2000)
+    yes.df <- rev.df[(rev.df$relevant=="yes"),]
+    yes.df <- yes.df[(yes.df$year>=2000),]
+    
+# study domain, taxa, and focus
+  domtaxfoc.df <- read.csv(paste0(data.dir,"domain_taxa_focus_count_papers.csv"),
+                           header=T, sep=",")
+```
+
+# Compiling a synthesized list of human predictors used in SDMs
+
+In this section, we will go over the entire list of human-related predictors that were recorded during the full article review. These are predictors for past, present, and future time frame studies. The predictor names are based on descriptions of verbatim names given by the authors. This full list of unique predictor names will be synthesized to have a more holistic overview of human predictor use in SDMs. Below, edits to predictor names are made.
+
+## Predictor name table setup
+
+First, the table of predictors are stratified across time frame, and then turned into a longer table, as the raw data table has all predictors per paper and per time frame semi-colon separated within one row/column coordinate. The long table will have a unique row per paper, time frame, domain, and predictor name.
+
+```{r table_pred_list, warning=FALSE, results='hold'}
+# Extract table and predictors from relevant papers
+  preds.list.df <- subset(yes.df,
+                          select = c("uid", "domain","past_hum_preds",
+                                     "present_hum_preds","future_hum_preds"))
+
+# Separate by past/present/future
+  preds.past.df <- subset(preds.list.df, select = c("uid","past_hum_preds"))
+  preds.pres.df <- subset(preds.list.df, select = c("uid", "present_hum_preds"))
+  preds.fut.df <- subset(preds.list.df, select = c("uid","future_hum_preds"))
+
+# Split multiple predictors contained in one row into multiple other new rows
+  preds.past.df <- separate_rows(preds.past.df, past_hum_preds,sep="; ",convert = TRUE)
+  preds.pres.df <- separate_rows(preds.pres.df, present_hum_preds,sep="; ", convert = TRUE)
+  preds.fut.df <- separate_rows(preds.fut.df, future_hum_preds,sep="; ", convert = TRUE)
+
+# Remove all NA's and "NONE"
+  # Identify the patterns to remove
+    patterns_to_remove <- c("", NA,"NONE","none")
+
+  # Remove rows with the specified patterns
+    preds.past.df <- preds.past.df[!(preds.past.df$past_hum_preds %in% patterns_to_remove),]
+    preds.past.df <- preds.past.df[rowSums(is.na(preds.past.df)) == 0,] # redo row numbers
+    preds.pres.df <- preds.pres.df[!(preds.pres.df$present_hum_preds %in% patterns_to_remove),]
+    preds.pres.df <- preds.pres.df[rowSums(is.na(preds.pres.df)) == 0,] # redo row numbers
+    preds.fut.df <- preds.fut.df[!(preds.fut.df$future_hum_preds %in% patterns_to_remove),]
+    preds.fut.df <- preds.fut.df[rowSums(is.na(preds.fut.df)) == 0,]    # redo row numbers
+  
+# Convert all to factors
+  preds.past.df$past_hum_preds <- as.factor(as.character(preds.past.df$past_hum_preds))
+  preds.pres.df$present_hum_preds <- as.factor(as.character(preds.pres.df$present_hum_preds))
+  preds.fut.df$future_hum_preds <- as.factor(as.character(preds.fut.df$future_hum_preds))
+
+# Change from wide to long-format dataframe and change column names
+  preds.past.df$timeframe <- "past"
+  preds.pres.df$timeframe <- "present"
+  preds.fut.df$timeframe <- "future"
+  colnames(preds.past.df)[which(names(preds.past.df)=="past_hum_preds")] <-"predictor"
+  colnames(preds.pres.df)[which(names(preds.pres.df)=="present_hum_preds")] <-"predictor"
+  colnames(preds.fut.df)[which(names(preds.fut.df)=="future_hum_preds")] <-"predictor"
+  
+# Bind again into one list (overwriting original list of predictors from above)
+  preds.list.df <- rbind(preds.past.df, preds.pres.df, preds.fut.df)
+  
+# Change time frame to factor
+  preds.list.df$timeframe <- as.factor(as.character(preds.list.df$timeframe))
+  
+# save as CSV
+  write.csv(preds.list.df,paste0(data.dir,"predictor_list_RAW.csv"),
+            row.names = FALSE)
+
+# preview
+  head(preds.list.df); tail(preds.list.df)
+  
+# summary
+  #summary(preds.list.df$predictor)
+  #summary(preds.list.df)
+
+```
+
+Count how many unique predictor names there are in the list.
+
+```{r pred_text_count}
+# inspect
+  paste("Unique predictor names to be synthesized:",
+        length(unique(preds.list.df$predictor)))
+```
+
+## Predictor name synthesis
+
+### Synthesizing food/agriculture predictor names
+
+Edit predictor names related to agriculture (farming, cultivating, rearing, animals, soil types).
+
+```{r pred_edit_ag}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    # first, fix small spaces
+      "^ " = "",
+      "_ " = "_",
+      " " = "_",
+    # agricultural terms
+      "algricultural" = "agricultural",
+      "agricultura_" = "agricultural_",
+      "agricultural_land" = "agricultural_areas",
+      "^agricultural_area$" = "agricultural_areas",
+      "agricultural_area_" = "agricultural_areas_",
+      "agricultral" = "agricultural",
+      "^cultivated_fields$" = "cultivated_areas",
+      "^cropland_area_2050$" = "cropland_areas",
+      "^cropland_area_2070$" = "cropland_areas",
+      "^cropland$" = "cropland_areas",
+      "^croplands$" = "cropland_areas",
+      "^pastures$" = "pasture_areas",
+      "^pasture$" = "pasture_areas",
+      "^percent_agricultural_land$" = "agricultural_areas_percent",
+      "agriculture_" = "agricultural_areas_",
+      "^ agricultural_areas_patches_mean_size$" = "agricultural_areas_patches_mean_size",
+      "^cropland_area$" = "cropland_areas",
+      "cropland_area-" = "cropland_areas_area-",
+      "cropland_proportion" = "cropland_areas_proportion",
+      "farmland_" = "farmlands_",
+      "farmlands_areas_" = "farmlands_",
+      "_percent_cover" = "_percent",
+      "croplands" = "cropland_areas",
+      "^pasture_areas$" = "pastures",
+      "pasture_area_" = "pastures_",
+      "^pastureland$" = "pastures",
+      "pasturelands_" = "pastures_",
+      "pasture_" = "pastures_",
+      "pastures_areas_h" = "pastures_",
+      "pasturesm" = "pastures",
+      "scrub_pasturessize" = "pastures_scrub_area_size",
+      "shrub_and_pastures_" = "pastures_and_shrub_",
+      "percent_agricultural_areas" = "agricultural_areas_percent",
+      "agricultural_areas_heterogenous" = "agricultural_areas_heterogeneous",
+      "cows_density" = "cattle_density",
+      "FAO_cattle_density" = "cattle_density",
+      "dryland_crops_percent" = "crops_dryland_percent",
+      "dry_cropland_percent" = "cropland_dry_percent",
+      "dry_grass_cropland_percent" = "cropland_dry_grass_percent",
+      "dry_farming_frequency" = "farming_dry_frequency",
+      "dry_farm_distance" = "farms_dry_distance",
+      "dry_herbaceous_crops" = "crops_dry_herbaceous_present_absent",
+      "irrigated_farming_" = "irrigated_farms_",
+      "irrigated_farm_" = "irrigated_farms_",
+      "harvest_instensity_wild_yams" = "harvest_wild_yams_intensity",
+      "grazing_area_" = "grazing_areas_",
+      "^vineyard$" = "vineyards",
+      "vineyard_" = "vineyards_",
+      "small_ruminant_" = "small_ruminants_",
+      "agricultural_areas_ha" = "agricultural_areas_area_ha",
+      "arable_lands_" = "arable_land_",
+      "irrigation_area_" = "irrigated_areas_",
+      "residual_pastoral_areas" = "pastoral_areas_residual",
+      "mixed_cropland_areas_" = "cropland_areas_mixed_",
+      "cropland_percent" = "cropland_areas_percent",
+      "fruit_tree_crops" = "crops_fruit_tree",
+      "rainfed_crops" = "crops_rainfed",
+      "^pastureschange_" = "pastures_change_",
+      "plantation_proportio" = "plantation_proportion",
+      "horses_" = "horse_",
+      "pig_density" = "pig_livestock_density",
+      "cropland_density" = "cropland_areas_density",
+      "cropland_area_" = "cropland_areas_",
+      "cropland_areas_change_" = "cropland_areas_area_change_",
+      "non-irrigated arable land" = "non-irrigated_arable_land",
+      "acacia_plantations" = "plantations_acacia",
+      "large_livestock" = "livestock_large",
+      "irrigated_area_" = "irrigated_areas_",
+      "agriculture_area_" = "agricultural_areas_",
+      "winter_grain_" = "crop_winter_grain_",
+      "winter_cereals" = "crop_winter_cereals",
+      "summer_cereals" = "crop_summer_cereals",
+      "winter_wheat" = "crop_winter_wheat",
+      "^spring_grain" = "crop_spring_grain",
+      "wheat_frequency" = "crop_wheat_frequency",
+      "^wheat_crops_" = "crop_wheat_",
+      "^grain_crops_" = "crop_grain_",
+      "^grape_crops_" = "crop_grape_",
+      "^grapevine_crops_" = "crop_grapevine_",
+      "^walnut_crops_" = "crop_walnut_",
+      "sugar_beet_crops_" = "crop_sugar_beet_",
+      "sugar_cane_cover_" = "crop_sugar_cane_",
+      "vineyards_ha" = "vineyards_area_size",
+      "vineyards_m2" = "vineyards_area_size",
+      "vineyards_size" = "vineyards_area_size",
+      "cows" = "cattle",
+      "^cattle_" = "livestock_cattle_",
+      "^livestock_area_" = "livestock_areas_",
+      "^fodder_" = "livestock_fodder_",
+      "agricultural_areas_irrigated" = "irrigated_agricultural_areas",
+      "agricultural_areas_patches_mean" = "agricultural_areas_mean",
+      "wooded" = "woody", 
+      "areass" = "areas",
+      "aquaculture_facility" = "aquaculture_",
+      "agricultural_establishments" = "agricultural_areas",
+      "agricultural_grassland_" = "agricultural_grasslands_",
+      "^agriculture$" = "agricultural_areas",
+      "agriculturr" = "agricultur",
+      "^maize_" = "crop_maize_",
+      "^alfalfa_crop_" = "crop_alfalfa_",
+      "^alfalfa_" = "crop_alfalfa_",
+      "^almond_crop_" = "crop_almond_",
+      "^almond_" = "crop_almond_",
+      "^annual_crops_" = "crops_annual_",
+      "^annual_days_grazed$" = "grazing_annual_days",
+      "^meadows_orchards" = "meadows_and_orchards",
+      "^low-intensity_agricultural_areas" = "agricultural_aeas_low-intensity",
+      "^arable_lands$" = "arable_land",
+      "^artichokes_frequency$" = "crop_artichoke_frequency",
+      "^harvested_artichokes_frequency$" = "crop_artichokes_harvested_frequency",
+      "^mixed_agricultural_areas$" = "agricultural_areas_mixed",
+      "mowing_meadow" = "meadow_mowed",
+      "broadleaved_deciduous_orchards_percent" = "orchards_broadleaved_deciduous_percent",
+      "broadleaved_evergreen_orchards_percent" = "orchards_broadleaved_evergreen_percent",
+      "needle-leaved_evergreen_orchards_percent" = "orchards_needle-leaved_evergreen_percent",
+      "oilseed_rape" = "crop_oilseed_rape",
+      "oil_seed_rape_" = "crop_oilseed_rape_",
+      "fields_rapeseed" = "crop_oilseed_rape",
+      "rape_crop_" = "crop_oilseed_rape_",
+      "_number$" = "_count",
+      "number_annual_fish_stock_events" = "annual_fish_stock_events_count",
+      "old_deciduous_conifer_plantations_percent" = "plantations_old_deciduous_conifer_percent",
+      "old_evergreen_conifer_plantations_percent" = "plantations_old_evergreen_conifer_percent",
+      "_grooves" = "_groves",
+      "olive_groves" = "orchards_olives",
+      "orchard_" = "orchards_",
+      "_olive_tree_groves" = "_olive_tree_orchards",
+      "olive_cultivations" = "orchards_olives",
+      "olive_plantations" = "orchards_olives",
+      "olive_and_fruit_groves" = "orchards_olives_and_fruit_groves",
+      "fruit_trees_and_olive_groves" = "orchards_olives_and_fruit_groves",
+      "fruit_tree_plantation" = "plantations_fruit_tree",
+      "fruit_trees_and_berry_plantation" = "plantations_fruit_tree_and_berry",
+      "fruit_and_berry_plantations" = "plantations_fruit_and_berry",
+      "fruit_plantations" = "plantations_fruit",
+      "fruit_trees_percent" = "plantations_fruit_trees_percent",
+      "coconut_plantations" = "plantations_coconut",
+      "coffee_plantations" = "plantations_coffee",
+      "^tree_plantation$" = "tree_plantations",
+      "tree_cultures_" = "tree_plantations_",
+      "complex_cultivation_areas" = "complex_cultivation_patterns",
+      "cultivation_complex_" = "complex_cultivation_patterns_",
+      "complex_cultivations_" = "complex_cultivation_patterns_",
+      "pastures_land" = "pastures_",
+      "livestock_cattle_presence_absence" = "livestock_cattle_presence",
+      "^winter_cereals" = "crop_cereal_winter",
+      "^summer_cereals" = "crop_cereal_summer",
+      "^fruit_crops_" = "crop_fruit_",
+      "cereal_crops" = "crop_cereal",
+      "cereal_land_cover" = "crop_cereal",
+      "fields_cereals_" = "crop_cereal_",
+      "^cereal_" = "crop_cereal_",
+      "cereals_" = "crop_cereal_",
+      "dry_cereal_cultures" = "crop_cereal_dry",
+      "paddy_agriculture" = "paddy_fields",
+      "paddy_areas" = "paddy_fields",
+      "paddy_field_" = "paddy_fields_",
+      "paddy_fields_size" = "paddy_fields_area_size",
+      "^rice$" = "rice_paddy",
+      "^rice_crop$" = "rice_paddy",
+      "^rice_field_" = "rice_paddy_",
+      "^rice_fields_" = "rice_paddy_",
+      "rice_paddy_cover_km2" = "rice_paddy_area_size",
+      "^rice_percent" = "rice_paddy_percent",
+      "palm_oil_plantations" = "plantations_palm_oil",
+      "^soybean" = "crop_soybean",
+      "strawberry_crops" = "crop_strawberry",
+      "specialized_crop" = "crop_specialized",
+      "pastureland" = "pastures",
+      "catchment_percent" = "_percent_catchment",
+      "cropland_areas" = "cropland",
+      "50percent" = "50_percent",
+      "cropland_sum" = "cropland_count",
+      "_sum_length" = "_length_sum",
+      "^permanent_culture$" = "permanent_cultures",
+      "cultivated_area_size" = "cultivated_areas_area_size",
+      "cultivated_areas_area_size" = "cultivated_areas_size",
+      "cultivated_land_" = "cultivated_areas_",
+      "cultivated_lands_" = "cultivated_areas_",
+      "pig_livestock_" = "livestock_pig_",
+      "porcine" = "livestock_pig",
+      "cultivated_proportion" = "cultivated_areas_percent",
+      "potato_crops" = "crop_potato",
+      "ranchos" = "rangeland",
+      "rain-fed_crops" = "crops_rainfed",
+      "rainfed_agriculture" = "cropland_areas_rainfed",
+      "rainfed_cropland_distance" = "cropland_areas_rainfed_distance",
+      "^rangelands" = "rangeland",
+      "potato_crops" = "crop_potato",
+      "dry_cropping" = "crop_dry",
+      "dry_crops_" = "crop_dry_",
+      "dryland_crops" = "crop_dry",
+      "dry_herbaceous_crops" = "crop_dry_herbaceous",
+      "dry_heterogeneous_crops" = "crop_dry_heterogeneous",
+      "dry_field_crops" = "crop_dry",
+      "dry_farm_" = "farmlands_dry_",
+      "farms_dry" = "farmlands_dry",
+      "dry_tree_crops" = "crop_dry_tree",
+      "fallow_fields" = "fallow_land",
+      "eucalyptus_forest" = "plantations_eucalyptus",
+      "pine_and_eucalyptus_plantations" = "plantations_pine_and_eucalyptus",
+      "farmlands_area_percent" = "farmands_percent",
+      "^farmlands_areas$" = "farmlands",
+      "farms_distance" = "farmlands_distance",
+      "tonns" = "tons",
+      "fields_maize" = "crop_maize",
+      "corn_presence" = "crop_maize_presence",
+      "corn_field_percent" = "crop_maize_percent",
+      "finfish_aquaculture" = "aquaculture_finfish",
+      "^salmon_farm" = "aquaculture_salmon",
+      "safflower_crops" = "crop_safflower",
+      "shaded_coffee_crops" = "crop_shaded_coffee",
+      "sheep_and_goat" = "sheep_goat",
+      "sheep_or_goat" = "sheep_goat",
+      "grazed_land" = "grazing_areas",
+      "grazing_land" = "grazing_areas",
+      "grazing_presence" = "grazing_areas",
+      "grazing_presence_absence" = "grazing_areas",
+      "grazing_nongrazing_land" = "grazing_areas",
+      "uncoverted_to_maize_land_type" = "unconverted_maize",
+      "hedge_p" = "hedgerows_p",
+      "hedge_rows" = "hedgerows",
+      "hedgerow_" = "hedgerows_",
+      "irrigated_agriculture" = "irrigated_agricultural_areas",
+      "heterogeneous_agriculture" = "agricultural_areas_heterogeneous",
+      "heterogeneous_agricultural_areas" = "agricultural_areas_heterogeneous",
+      "cultivated_crop_percent" = "cultivated_crops_percent",
+      "^sheep_abundance_class" = "livestock_sheep_abundance_class",
+      "^sheep_density" = "livestock_sheep_density",
+      "^sheep_goat_density" = "livestock_sheep_goat_density",
+      "^sheep_grazing_alpine_percent" = "grazing_sheep_alpine_percent",
+      "^sheep_farm_distance" = "livestock_sheep_farm_distance",
+      "livestock_density_cattle" = "livestock_cattle_density",
+      "livestock_density_goats" = "livestock_goat_density",
+      "livestock_density_sheep" = "livestock_sheep_density",
+      "agricultural_areas_20km_radius_percent" = "agricultural_areas_percent_20km_radius",
+      "fruit_trees_and_orchards_olives" = "orchards_fruit_and_olives",
+      "orchards_olives_and_fruit_groves_percent" = "orchards_fruit_and_olives",
+      "^groves" = "orchards",
+      "plantations_fruit_trees" = "orchards_fruit_tree",
+      "plantations_fruit_tree" = "orchards_fruit_tree",
+      "berrys" = "berries",
+      "cow_density" = "livestock_cattle_density",
+      "deer_density" = "livestock_deer_density",
+      "goat_density" = "livestock_goat_density",
+      "hedges" = "hedgerows",
+      "opland_vegetation_mosaic" = "cropland_vegetation_mosaic",
+      "cropland_areas" = "croplands",
+      "crop_drypercent" = "crop_dry_percent",
+      "barley_crops" = "crop_barley",
+      "olive_percent" = "olives_percent",
+      "olive_orchards_percent" = "orchards_olives_percent",
+      "paddy_fields" = "rice_paddy",
+      "pine_plantations" = "plantations_pine",
+      "eucalyptus_plantations" = "plantations_eucalyptus",
+      "livestock_sheep_livestock_goat" = "livestock_sheep_goat",
+      "livestock_cattle_livestock" = "livestock_cattle",
+      "livestock_livestock_goat" = "livestock_goat",
+      "cattle_abundance" = "cattle_density",
+      "horse_abundance" = "horse_density",
+      "sheep_abundance" = "sheep_density",
+      "horticulural" = "horticultural",
+      "young_evergreen_conifer_plantations" = "plantations_young_evergreen_conifer"
+  )
+  
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing silviculture predictor names
+
+Edit predictor names related to silviculture (growing/cutting trees, agroforestry, clearcut areas)
+
+```{r pred_edit_silviculture}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "\\(cut_blocks\\)" = "",
+    "^logging_areas$" = "cut-block_areas",
+    "^logging_percent_\\(cut-blocks\\)$" = "cut-blocks_percent",
+    "^logging_percent$" = "cut-blocks_percent",
+    "cut_block" = "cut-block",
+    "cut_blocks" = "cut-block",
+    "cutblock" = "cut-block",
+    "\\(\\)" = "",
+    "clear-cut" = "clear_cut",
+    "^cut-blocks_" = "logging_cut-block_",
+    "^cut-block_" = "logging_cut-block_",
+    "cut-block_presence" = "cut-block_areas",
+    "cut-blocks" = "cut-block_areas",
+    "block_features" = "logging_cut-block_areas",
+    "logging_cut_size_ha" = "logging_cut-block_areas_size",
+    "logging_cut-logging cut-block areas" = "logging cut-block areas",
+    "^cut-block_areas$" = "logging cut-block areas",
+    "clearcut_areas" = 	"clear_cut_areas",
+    "land_clearance" = "clear_cut_areas",
+    "logging_cut-logging_cut-block_areas" = "logging_cut-block_areas",
+    "saw_mills" = "sawmills",
+    "industrial_logging" = "logging_industrial"
+  )
+  
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing energy/fuel/raw material predictor names
+
+Edit predictor names related to energy, fuels and raw materials.
+
+```{r pred_edit_energy}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "coal_mines_" = "mines_",
+    "lead_mines_" = "mines_",
+    "unconventional oil and gas well pads" = "oil_gas_well_pads_unconventional",
+    "mine_lands_" = "mines_",
+    "mine_" = "mines_",
+    "mining_areas" = "mines",
+    "mining_sites" = "mines",
+    "freatures" = "features",
+    "transmission_line_" = "transmission_lines_",
+    "electric_transmission_lines" = "electric_lines",
+    "electric_wiring" = "electric_lines",
+    "electric_line_" = "electric_lines_",
+    "power_lines" = "powerlines",
+    "precipitation_corrected_irrigation" = 
+      "precipitation_evaporation_corrected_irrigation",
+    "submarine_pipelines_cables_extent" = "pipeline_submarine_cables_extent",
+    "well_pads_percent" = "oil_well_pads_percent",
+    "mines_lands" = "mines",
+    "mines_sites" = "mines",
+    "^pipelines_density$" = "oil_gas_pipeline_density",
+    "oil_well_sites" = "oil_gas_well_sites",
+    "oil_and_gas_well_density" = "oil_gas_well_density",
+    "dams_distance_downstream" = "dams_downstream_distance",
+    "powerlines_presence" = "powerlines",
+    "petroleum" = "oil",
+    "seismic_pipelines" = "seismic_lines"
+  )
+  
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing recreation/tourism predictor names
+
+Edit predictor names related to recreation and tourism.
+
+```{r pred_edit_tourism}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "trail_" = "trails_",
+    "_trail$" = "_trails",
+    "^path$" = "paths",
+    "paths" = "trails",
+    "footpath_presence" = "trails",
+    "campsites" = "campground",
+    "recreation_features" = "recreational_areas",
+    "^gardens$" = "garden",
+    "ski-lifts" = "ski-lift",
+    "skilift" = "ski-lift",
+    "ski_tracks_lifts_m" = "ski_tracks_and_lifts_length",
+    "cableways_" = "cableway_"
+  )
+  
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing human habitat/infrastructure predictor names
+
+Edit predictor names related to human habitation and infrastructure.
+
+```{r pred_edit_infrastructure}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "human_area_" = "human_areas_",
+    "urban_areas_ha" = "urban_areas_size",
+    "urban_areas_m2" = "urban_areas_size",
+    "urban_land_use" = "urban_areas",
+    "urban_land_cover" = "urban_areas",
+    "urban_land" = "urban_areas",
+    "urban_fraction" = "urban_areas_percent",
+    "urban_percent" = "urban_areas_percent",
+    "urban_count" = "urban_areas_count",
+    "^rban_area_" = "urban_areas_",
+    "^urban_area_" = "urban_areas_",
+    "^urban_areas_presence" = "urban_areas",
+    "urban_areas_size_km" = "urban_areas_size",
+    "^urban_zone_percent$" = "urban_areas",
+    "^urban_areas_proportion$" = "urban_areas_percent",
+    "^urban_settlement$" = "settlements_urban",
+    "urban_settlements" = "settlements_urban",
+    "^human_settlements" = "settlements",
+    "settelments" = "settlements",
+    "town_" = "towns_",
+    "city_" = "cities_",
+    "village_" = "villages_",
+    "^ developed_exposed_land_percent$" = "developed_land_exposed_percent",
+    "^garden$" = "garden_presence_absence",
+    "^developed_land$" = "developed_areas",
+    "^developed_high_intensity$" = "developed_areas_intensity_high",
+    "^developed_med_intensity$" = "developed_areas_intensity_medium",
+    "^developed_low_intensity$" = "developed_areas_intensity_low",
+    "^development_intensity_high$" = "developed_areas_intensity_high",
+    "^developedment_intensity_low$" = "developed_areas_intensity_low",
+    "^distance_village$" = "village_distance",
+    "^rural_settlements_" = "settlements_rural_",
+    "^rural_village$" = "villages_rural",
+    "small_villages" = "villages_small",
+    "small_settlements" = "settlements_small",
+    "^settlement_distance$" = "settlements_distance",
+    "^distance_settlements$" = "settlements_distance",
+    "^built-up_area$" = "built-up_areas",
+    "^built-up_area_" = "built-up_areas_",
+    "^built-up_area__density_50m_buffer$" = "built-up_areas_density_50m_buffer",
+    "village_" = "villages_",
+    "urban_area_" = "urban_areas_",
+    "^urban$" = "urban_areas",
+    "^urban_area$" = "urban_areas",
+    "buildings_" = "buildings_",
+    "protected_area_" = "protected_areas_",
+    "non-linear_footprint" = "human_footprint_non-linear",
+    "non-agricultural_footprint" = "human_footprint_agricultural",
+    "building_" = "buildings_",
+    "buildings_number_per_km" = "buildings_count",
+    "isolated_houses_and_roads_" = "houses_and_roads_isolated_",
+    "number_separate_parcels_used_per_household" = "household_separate_parcels_used_count",
+    "distance_villages_classes" = "villages_distance_class",
+    "land-use_built-up" = "built-up",
+    "main_cities_" = "cities_main_", 
+    " \\(gain or loss\\)" = "_gain_loss",
+    "settlement_" = "settlements_",
+    "south-facing_walls" = "walls_south-facing",
+    "native_american" = "Native_American",
+    "_american_" = "_American_",
+    "proportion_human_land_use" = "human_land_use_proportion",
+    "transfromation" = "transformation",
+    "urbanization_" = "urban_areas_",
+    "small_cities_" = "cities_small_",
+    "domestic_garden_cover_" = "garden_",
+    "conventration_impervious_surfaces" = "impervious_surfaces_percent",
+    "developed_area_percent" = "developed_areas_percent",
+    "residential_area_percent" = "residential_areas_percent",
+    "restricted_areas_military" = "military_restricted_areas",
+    "weighted-mean" = "weighted_mean",
+    "adjacent_land_cover" = "land_cover_adjacent",
+    "^light_pollution$" = "nighttime_light_intensity",
+    "^light_pollution_degree$" = "nighttime_light_intensity",
+    "^wells_" = "well_",
+    "wasteland_size" = "wasteland_area_size",
+    "worst_housing_conditions_" = "housing_conditions_worst_",
+    "best_housing_conditions_" = "housing_conditions_best_",
+    "local_situation_urban_or_landscape" = "urban_areas_or_landscape_local",
+    "low-density_urban_areas" = "urban_areas_low-density",
+    "low-intensity_urban_areas" = "urban_areas_low-intensity",
+    "low-intensity_urban_percent" = "urban_areas_low-intensity_percent",
+    "low-intensity_developed_area_" = "developed_areas_low-intensity_",
+    "low-intensity_developed_areas_" = "developed_areas_low-intensity_",
+    "developed_area_low_intensity_" = "developed_areas_low-intensity_",
+    "low-intensity_development_" = "developed_areas_low-intensity_",
+    "low-intensity_land_use_" = "land_use_low-intensity_",
+    "anthropogenic_land_use" = "anthropogenic_land",
+    "antropogenic_features" = "anthropogenic_structures",
+    "arable_area_size" = "arable_land_area_size",
+    "arable_area" = "arable_land",
+    "arable_fields_presence" = "arable_fields",
+    "arable_fields" = "arable_land",
+    "medium-intensity_urban_areas" = "urban_areas_medium-intensity",
+    "medium-intensity_urban_percent" = "urban_areas_medium-intensity_percent",
+    "medium-intensity_developed_area_" = "developed_areas_medium-intensity_",
+    "medium-intensity_developed_areas_" = "developed_areas_medium-intensity_",
+    "developed_area_medium_intensity_" = "developed_areas_medium-intensity_",
+    "medium_or_high-intensity_development_" = "developed_areas_medium_or_high-intensity_",
+    "medium_or_high-intensity_land_use_" = "land_use_medium_or_high-intensity_",
+    "artificial_light_intensity" = "nighttime_light_intensity",
+    "nightlight" = "nighttime_light",
+    "artificial_light_intensity" = "nighttime_light_intensity",
+    "nightime_light_intensity" = "nighttime_light_intensity",
+    "anthropogenic_night_lights" = "nighttime_light_intensity",
+    "^nighttime_light$" = "nighttime_light_intensity",
+    "^nightlight$" = "nighttime_light_intensity",
+    "urban_brownfield_" = "urban_brownfields_",
+    "natural_or_unnatural_burn" = "burn_natural_or_unnatural",
+    "build-up" = "built-up",
+    "built_area_" = "built-up_areas_",
+    "buildings_number_per_km" = "buildings_frequency_1km_radius",
+    "built-up_and_urban_areas_distance" = "urban_and_built-up_areas_distance",
+    "dense_urban_areas" = "urban_areas_high-intensity",
+    "developed_area_" = "developed_areas_",
+    "intensity_high" = "high-intensity",
+    "intensity_medium" = "medium-intensity",
+    "intensity_low" = "low_high-intensity",
+    "developed_land" = "developed_areas",
+    "developed_exposed_land" = "developed_areas_exposed",
+    "developed_high-intensity" = "developed_areas_high-intensity",
+    "high-intensity_developed_area_" = "developed_areas_high-intensity_",
+    "^high-intensity_developed_areas" = "developed_areas_high-intensity",
+    "high-intensity_development" = "developed_areas_high-intensity",
+    "high-intensity_urban_areas" = "urban_areas_high-intensity",
+    "high-intensity_urban_percent" = "urban_areas_high-intensity_percent",
+    "developed_medium-intensity" = "developed_areas_medium-intensity",
+    "developed_low-intensity" = "developed_areas_low-intensity",
+    "^development_" = "developed_areas",
+    "high-intensity_development_" = "developed_areas_high-intensity_",
+    "development_medium_area_" = "developed_areas_medium-intensity_area",
+    "developmed" = "developed",
+    "^developed_p" = "developed_areas_p",
+    "^developed_moderate_intensity" = "developed_areas_medium-intensity",
+    "diffuse_urban_areas" = "urban_areas_diffuse",
+    "discontinous" = "discontinuous",
+    "urban_areas_discontinuous" = "discontinuous_urban_fabric",
+    "^settlements_areas$" = "settlements",
+    "settlments_" = "settlements_",
+    "settlment_" = "settlements_",
+    "short-cut_lawn" = "lawn_short_cut",
+    "green_urban_areas" = "urban_green_space",
+    "^unihabited_villages" = "villages_uninhabited",
+    "human_activities" = "human_activity",
+    "human-dominated_area_" = "human-dominated_areas_",
+    "human_dominated_areas_" = "human-dominated_areas_",
+    "industrial_land" = "industrial_areas",
+    "human_habitation" = "settlements",
+    "inhabited_areas" = "settlements",
+    "human_inhabited_areas" = "settlements",
+    "urban_park_" = "urban_parks_",
+    "human_populated_area_" = "human_populated_areas_",
+    "human_population_center_" = "human_population_centers_",
+    "human_use_area" = "human_use",
+    "impervious_land_cover" = "impervious_surfaces",
+    "impervious_surface_" = "impervious_surfaces_",
+    "imperviousness_percent" = "imperviousness",
+    "imperviousness_index" = "imperviousness",
+    "impervous" = "impervious",
+    "suburban_d" = "suburban_areas_d",
+    "suburban_p" = "suburban_areas_p",
+    "^settlement$" = "settlements",
+    "residential_area_density" = "residential_areas_density",
+    "developed_areaspercent" = "developed_areas_percent",
+    "developed_areasopen" = "developed_areas_open",
+    "developed_areasmedium" = "developed_areas_medium",
+    "developed_areaslow" = "developed_areas_low",
+    "developed_areashigh" = "developed_areas_high",
+    "lit-up_areas" = "artificial_illumination",
+    "rural_land" = "rural_areas",
+    "cemetaries" = "cemeteries",
+    "^human_settlement$" = "settlements",
+    "human_use" = "human_land_use",
+    "^human_footprint$" = "human_footprint_index",
+    "^human_settlements$" = "settlements"
+    )   
+
+  
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing transportation/human movement predictor names
+
+Edit predictor names related to transportation infrastructure and human movement (e.g. bridges, roads, highways, airports, railways, canals, linear features, boat traffic, traffic, shipping, streets).
+
+```{r pred_edit_roads}
+# create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "railroads_" = "railways_",
+    "railroad_" = "railways_",
+    "railway_" = "railways_",
+    "^railway$" = "railways",
+    "railways_tracks" = "railway_tracks",
+    "^railways_length_per_cell" = "railways_length",
+    "^motorway_length$" = "highways_length",
+    "^secondary_roads_distance$" = "roads_secondary_distance",
+    "^distance_roads$" = "roads_distance",
+    "^road_distance$" = "roads_distance",
+    "^distance_minor_roads$" = "roads_minor_distance",
+    "^distance_major_roads$" = "roads_major_distance",
+    "^road_length_per_cell$" = "roads_length",
+    "^road_proximity$" = "roads_distance",
+    "^road_density$" = "roads_density",
+    "autonomic_roads_" = "roads_autonomic_",
+    "main_roads" = "roads_main",
+    "major_roads" = "roads_major",
+    "national_roads" = "roads_national",
+    "primary_road_" = "roads_primary_",
+    "road_" = "roads_",
+    "roads_access_number" = "roads_access_count",
+    "roads_distancec" = "roads_distance",
+    "winter_roads" = "roads_winter",
+    "number_roads_access" = "roads_access_number",
+    "secondary_roads_" = "roads_secondary_",
+    "^sealed_roads_" = "roads_paved_",
+    "unsealed_roads_" = "roads_unpaved_",
+    "highway_" = "highways_",
+    "^interstate_highways_" = "highways_interstate_",
+    "dam_" = "dams_",
+    "port_" = "ports_",
+    "ports_proximity" = "ports_distance",
+    "conventional_roads" = "roads_conventional",
+    "number_roads_lake_perimeter" = "roads_lake_perimeter_count",
+    "concentration_impervious_surfaces" = "impervious_surfaces_percent",
+    "manmade_surfaces_percent" = "artificial_surfaces_percent",
+    "concrete_areas_percent" = "impervious_surfaces_percent",
+    "impervious_surface_percent" = "impervious_surfaces_percent",
+    "tarred_areas_percent" = "impervious_surfaces_percent",
+    "roads_frequency" = "roads_count",
+    "^accessibility$" = "human_accessibility",
+    "wide_roads" = "roads_wide",
+    "infrastructures" = "infrastructure",
+    "^local_roads_" = "roads_local_",
+    "^main_roads_" = "roads_main_",
+    "^major_and_local_roads_" = "roads_major_and_local_",
+    "^major_roads_" = "roads_major_",
+    "^minor_roads_" = "roads_minor_",
+    "^narrow_roads_" = "roads_narrow_",
+    "^minor_street_" = "street_minor_",
+    "^major_street_" = "street_major_",
+    "street_length_m" = "street_length",
+    "asphalt_roads" = "roads_paved",
+    "roads_non-asphalted" = "roads_unpaved",
+    "^paved_road_" = "roads_paved_",
+    "^paved_roads_" = "roads_paved_",
+    "^pavement_area" = "paved_area",
+    "boat_ramp_" = "boat_launch_",
+    "number_boat_launch" = "boat_launch_count",
+    "county_roads" = "roads_county",
+    "^primary_roads" = "roads_primary",
+    "^primative_roads" = "roads_primative",
+    "roads_20km_buffer_percent" = "roads_percent_20km_radius",
+    "roads_length_upaved" = "roads_upaved_length",
+    "expressway" = "highway",
+    "scrub_to_roadway_distance" = "road_to_scrub_distance",
+    "^track_distance" = "tracks_distance",
+    "tertiary_roads" = "roads_tertiary",
+    "gravel_roads" = "roads_gravel",
+    "highways_and_roads" = "roads_and_highways",
+    "roads_km" = "roads_length",
+    "unpaved_track" = "roads_unpaved",
+    "federal_avian" = "federal_aviation",
+    "motorway" = "highway",
+    "railways_and_roads_" = "roads_and_railways_",
+    "^unpaved_roads_" = "roads_unpaved_",
+    "railway_tracks" = "railways",
+    "railway_track_" = "railways_",
+    "railways_track_" = "railways_",
+    "roads_length_unpaved" = "roads_unpaved_length"
+  )
+
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing socio-economic predictor names
+
+Edit predictor names related to economics/growth (education, poverty, unemployment, population, retired, renters, homeowners).
+
+```{r pred_edit_socioeconomic}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "^human_population$" = "human_population_density",
+    "^human_populationn" = "human_population",
+    "^human_populationN" = "human_population",
+    "^humans_count_" = "human_population_density_",
+    "^humans_per_km2_" = "human_population_density_1km_radius",
+    "rural_human_population_density" = "human_population_density_rural",
+    "^populated_areas_" = "human_populated_areas_",
+    "number_inhabitants_nearest_village" = "inhabitants_nearest_village_count",
+    "^own_>100k" = "town_>100k",
+    "^>65yrs_percent$" = "residents_>65yrs_percent",
+    "farm_forestry_fishing_profession_percent" = "profession_farm_forestry_fishing_percent",
+    "^population_" = "human_population_",
+    "^year_housing_" = "housing_year_",
+    "^year_moved_" = "housing_year_moved_",
+    "^income" = "household_income",
+    "white_households_" = "households_white_",
+    "residents_with_bachelor_degrees_" = "education_bachelors_above_",
+    "bachelors_above_" = "bachelors_and_above_",
+    "school_below_" = "school_and_below_",
+    "_km2reef" = "_km2_reef",
+    "\\(gainorloss\\)" = "_gain_or_loss",
+    "_number$" = "_count",
+    "poopulation" = "population",
+    "town_>100k_residents_distance" = "towns_>100k_residents_distance",
+    "towns_>100k_residents_distance" = "towns_>100k_inhabitants_distance",
+    "towns_distance_>100k_inhabitants" = "towns_>100k_inhabitants_distance",
+    "towns_>500k_residents_distance" = "towns_distance_>500k_inhabitants",
+    "towns_distance_>500k_inhabitants" = "towns_>500k_inhabitants_distance",
+    "full-time_farmers" = "farmers_full-time",
+    "part-time_farmers" = "farmers_part-time",
+    "rutal" = "rural",
+    "inhabitants_density" = "residents_density",
+    "inhabitant_density" = "residents_density",
+    "infuence" = "influence",
+    "global_human" = "human",
+    "industrian" = "industrial",
+    "human_population_settlements" = "human_population_density_settlements",
+    "urban_and_transport_land_cover_percent" = "urban_and_transport_percent"
+  )
+
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing land loss/degradation/abandonment predictor names
+
+Edit predictors related to land loss/degradation/abandonment.
+
+```{r pred_edit_loss}
+
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c("disturbed_forest_cover" = "forest_cover_disturbed",
+                "^forest$" = "forest_presence_absence",
+                "forest_fragmentations" = "forest_fragmentation",
+                "semi_natural_" = "semi-natural_",
+                "perterbation" = "perturbation",
+                "forest_patch_" = "forest_",
+                "past_deforestation_area_" = "deforestation_area_historic",
+                "forested_non_forested_deforested_class" = "deforested_area",
+                "forested_non_forested" = "forest_non-forest",
+                "^unexploited_area$" = "unexploited_areas",
+                "forested_non-forested" = "forest_non-forest",
+                "deforestation_area_historicdistance" = "deforestation_historic_distance"
+  )
+
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing conservation/management predictor names
+
+Edit predictor names related to protection, conservation, and management.
+
+```{r pred_edit_conservation}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "distance_protected_areas" = "protected_areas_distance",
+    "distance_non-hunting_reserve" = "non-hunting_reserve_distance", 
+    "no-hunting_area_distance" = "non-hunting_area_distance",
+    "hunting_area_distance" = "hunting_areas_distance",
+    "regions" = "areas",
+    "^protected_area$" = "protected_areas",
+    "^protected_areas_presence$" = "protected_areas",
+    "^release_point$" = "release_site",
+    "^release_distance$" = "release_site_distance",
+    "^protected_areas_presence$" = "protected_areas",
+    "introduced_site" = "species_introduction_site",
+    "reintroduction_site_nucleus_distance" = "species_introduction_site_distance",
+    "introduction_locus_distance" = "species_introduction_site_distance",
+    "introduced_site_distance" = "species_introduction_site_distance",
+    "release_point_distance" = "species_introduction_site_distance",
+    "release_site_distance" = "species_introduction_site_distance"
+  )
+
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing pollution predictor names
+
+Edit predictor names related to pollution.
+
+```{r pred_edit_pollution}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "nighttime_" = "night_",
+    "anthropogenic_night_lights" = "night_light_intensity",
+    "nightime_light_intensity" = "night_light_intensity",
+    " polyaromatic_" = "polyaromatic_",
+    "maximum_chlorophyll-a" = "chlorophyll-a_maximum",
+    "minimum_chlorophyll-a" = "chlorophyll-a_minimum",
+    "\\(streamflow\\)" = "",
+    "_incidents_number_" = "_incidents_count_",
+    "_runoff\\(\\)$" = "_runoff",
+    "barrier_current" = "barrier")
+
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing ambiguous use/cover predictor names
+
+Edit predictors related to generalized use/cover.
+
+```{r pred_edit_ambiguous}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "land_cover_land_use" = "land_use/land_cover",
+    "land_use_land_cover" = "land_use/land_cover",
+    "land_use/land_cover_mode" = "land_use/land_cover",
+    "^land_use_land_cover$" = "land_use/land_cover",
+    "^land_use$" = "land_use/land_cover",
+    "^land_cover$" = "land_use/land_cover",
+    "^land_Cover$" = "land_use/land_cover",
+    "^land_use_type$" = "land_use/land_cover",
+    "^land_use_1976$" = "land_use/land_cover",
+    "^land_use_1990$" = "land_use/land_cover",
+    "^land_use_1996$" = "land_use/land_cover",
+    "^land_use_2000$" = "land_use/land_cover",
+    "^land_use_2003$" = "land_use/land_cover",
+    "^land_use_2050$" = "land_use/land_cover",
+    "^land_use_2070$" = "land_use/land_cover",
+    "^land_cover_type$" = "land_use/land_cover",
+    "land_use_type" = "land_use/land_cover",
+    "land_cover_patches" = "land_cover_patch",
+    "land_use_change" = "land_use_change_percent",
+    "land_use_count" = "land_use_class_count",
+    "land_use_sum" = "land_use_richness",
+    "historic_19" = "historic_yr19",
+    "land_use_yr" = "land_use_historic_yr",
+    "landcover_type" = "land_use/land_cover",
+    "land_use_type" = "land_use/land_cover",
+    "land-use_" = "land_use_",
+    "habitat_type" = "land_use/land_cover",
+    "^land_cover_change$" = "land_cover_change_rate",
+    "_contagion_index" = "contagion",
+    "landscape_condition$" = "landscape_condition_index",
+    "diveristy" = "diversity",
+    "diversity_index" = "diversity",
+    "_heteogeneity" = "_heterogeneity",
+    "land_cover_heterogeneity" = "land_cover_diversity",
+    "historic_land_use" = "land_use_historic",
+    "land_cover_type_dominant" = "land_cover_dominant",
+    "land_cover_dominant_class" = "land_cover_dominant",
+    "^non-forested$" = "forest_non-forest",
+    "primary_land_cover" = "land_cover_dominant",
+    "land_cover_and_land_use/land_cover" = "land_use/land_cover",
+    "land_use_class" = "land_use/land_cover",
+    "land_covercontagion" = "land_cover_contagion",
+    "^land_cover_" = "land_use/land_cover_",
+    "^land_Cover_" = "land_use/land_cover_"
+    )
+
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+### Synthesizing additional predictor name patterns
+
+Edit predictors with years in names.
+
+```{r pred_edit_years}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "_1900" = "_yr1900",
+    "_1950" = "_yr1950",
+    "_1985" = "_yr1985",
+    "_2021" = "_yr2021",
+    "_2035" = "_yr2035",
+    "_2050" = "_yr2050",
+    "_2060" = "_yr2060",
+    "_2070" = "_yr2070",
+    "_2100" = "_yr2100",
+  # deleting future years because years are implied in SDM
+    "_yr2021" = "", 
+    "_yr2035" = "",
+    "_yr2050" = "",
+    "_yr2060" = "",
+    "_yr2070" = "",
+    "_yr2100" = "")
+
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+Edit predictors using radii, buffers, and other size indicators.
+
+```{r pred_edit_sizes}
+# Create a vector of patterns to search and replace (search on left, replace on right)
+  patterns <- c(
+    "buffer" = "radius",
+    "100ha" = "100ha_radius",
+    "_10m$" = "_10m_radius",
+    "_25m$" = "_25m_radius",
+    "_50m$" = "_50m_radius",
+    "_100m$" = "_100m_radius",
+    "_165m$" = "_165m_radius",
+    "_315m$" = "_315m_radius",
+    "_500m$" = "_500m_radius",
+    "_615m$" = "_615m_radius",
+    "_1215m$" = "_1215m_radius",    
+    "_4.5km$" = "_4.5km_radius",
+    "_5km$" = "_5km_radius",
+    "_20km$" = "_20km_radius",
+    "proportion" = "percent",
+    "fraction" = "percent",
+    "_m2$" = "_area_size",
+    "_m$" = "_length",
+    "_meters$" = "_length",
+    "_m^3" = "_volume",
+    "_size_ha$" = "_area_size",
+    "_area_ha$" = "_area_size",
+    "average" = "mean",
+    "patches" = "patch",
+    "quantity" = "count",
+    "hectares" = "area_size",
+    "_presence_absence" = "",
+    "_presence-absence" = "",
+    "distane" = "distance",
+    "desnity" = "density",
+    "aeas" = "areas",
+    "_countes$" = "count",
+    "country_boundry" = "country_boundary",
+    "areaspercent" = "areas_percent",
+    "percentn" = "percent",
+    "m^3" = "volume",
+    "distubance" = "disturbance",
+    "radius_radius" = "radius",
+    "disconinuous" = "discontinuous"
+    )
+
+# for-loop of edits
+  for (pattern in names(patterns)) {
+    preds.list.df <- data.frame(lapply(preds.list.df, function(x) {
+      gsub(pattern, patterns[pattern], x)
+    }))
+  }
+  
+# get new count of predictor list
+  length(unique(preds.list.df$predictor))
+```
+
+Edit lines with typos in semi-colons.
+
+```{r pred_edit_typos}
+preds.list.df <- separate_rows(preds.list.df,predictor,sep=';')
+```
+
+Delete rows that are only blank spaces.
+
+```{r pred_edit_blanks}
+# delete extra rows with blanks
+  preds.list.df <- preds.list.df[!(is.na(preds.list.df$predictor) |
+                                   preds.list.df$predictor==""), ]
+```
+
+Convert all underscores (_) to spaces.
+
+```{r pred_edit_spaces}
+# remove extra spaces in front of strings
+  preds.list.df <- data.frame(lapply(preds.list.df, function(x) {gsub("^ ","", x)}))
+  
+# convert underscores to spaces
+  preds.list.df <- data.frame(lapply(preds.list.df, function(x) {gsub("_"," ", x)}))
+  
+# remove extra spaces in between strings
+  preds.list.df <- data.frame(lapply(preds.list.df, function(x) {gsub("  "," ", x)}))
+  preds.list.df <- data.frame(lapply(preds.list.df, function(x) {gsub("  "," ", x)}))
+
+```
+
+Get *final count* of unique predictor names.
+
+```{r pred_final_count}
+# inspect
+  length(unique(preds.list.df$predictor))
+```
+
+## Summary table of predictors used
+
+```{r pred_list_count, warning=FALSE}
+
+# Get a count of predictors, sorted by past/present/future
+  library("plyr")
+  preds.list.short <- ddply(preds.list.df, .(timeframe, predictor), summarize,
+                           count=length(predictor))
+  str(preds.list.short)
+```
+
+```{r pred_list_count_gen}
+# Remove repeated predictors for each UID and time frame
+  preds.list.uniq <- preds.list.df[!duplicated(
+                              preds.list.df[,c('uid','predictor','timeframe')]),]
+
+# Get a list of unique predictors, timeframes, and papers
+  preds.list.shorter <- ddply(preds.list.uniq, .(predictor),
+                             summarize,
+                             # list of paper UIDs that used the predictors
+                             papers=paste(unique(uid),collapse="; "),
+                             # list of time frames for which they were used
+                             timeframes=paste(unique(timeframe),collapse="; "),
+                             # count number of papers using each predictor
+                             count=paste(length(unlist(strsplit(papers, ";"))))
+                             )
+ 
+# get structure
+  options(width=85) # ensure width
+  str(preds.list.shorter)
+```
+
+```{r pred_list_save}
+# inspect as needed
+  #summary(preds.list.shorter$predictor)
+
+# save
+  write.csv(preds.list.shorter, paste0(data.dir,"predictor_list_summary.csv"),
+            row.names = FALSE)
+```
+
+
+## Top 10 human predictors
+
+Here, we show how to extract the top 10 human predictors being used in SDM studies, but the full list is available in the Supplementary Materials corresponding to this published article.
+
+```{r pred_list_top10, warning=FALSE}
+# read again (no row names anymore)
+  preds.list.shorter <- read.csv(paste0(data.dir,"predictor_list_summary.csv"),
+                                header = TRUE)
+
+# show table of predictors used more than twice
+  preds.list.short2 <- subset(preds.list.shorter[preds.list.shorter$count>=2,])
+
+# Sort the predictors by most frequent, followed by name
+  preds.list.short2 <- preds.list.short2[order(-preds.list.short2$count,
+                                               preds.list.short2$predictor),]
+
+# Show the top 10
+  kableExtra::kbl(preds.list.short2[1:10,], booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header")) %>%
+    column_spec(1, width="2em") %>%
+    column_spec(2, bold=F, color="black", border_right=F, width="10em") %>%
+    column_spec(3, width="18em") %>%
+    column_spec(4, width="4em") %>%
+    column_spec(5, width="3em")
+```
+
+Out of curiosity, we also want to know how many human predictors have been used by at least more than one paper.
+
+```{r total_2_more}
+# get length
+  paste("A total of",dim(preds.list.short2)[1],
+        "human predictors are used in at least more than one paper.")
+```
+We also want to know how many human predictors have been used in only one paper.
+
+```{r total_1_only}
+# get length
+  paste(nrow(preds.list.shorter[preds.list.shorter$count==1,]),
+        "out of",
+        nrow(preds.list.shorter),
+        "human predictors have only been used in only one paper.")
+```
+
+## Sorting predictors by data type
+
+Add a blank column for data type, and then fill in this field by text mining predictor names and assigning accordingly.
+
+```{r new_field}
+preds.list.shorter$data_type <- NA
+```
+
+### Predictors relating to density/count
+
+```{r type_dens}
+# make list of search terms
+  cat_list <- c("* average$","* mean$","*sum$","*total$","abundance","concentration",
+                "count","death","density","frequency","growth","income","individual*",
+                "killing","loss","maximum","mean annual", "minimum","number","percent",
+                "poisoning","precipitation","proportion","quantity","range",
+                "tons per hectare","total annual","total dissolved","volume",
+                "tonnage","sum imports","watts","wastewater discharge"
+                )
+
+# inspect list
+  #preds.list.shorter$predictor[grepl(paste0(cat_list, collapse = "|"),
+  #                                 preds.list.shorter$predictor)]
+
+# search and append
+  preds.list.shorter$data_type <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                        'density/count', preds.list.shorter$data_type)
+
+# inspect (note NA's remaining)
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$data_type))
+```
+
+### Predictors using indices, ratios or intensities
+
+```{r type_ratio}
+# make list of search terms
+  cat_list <- c("index", "intensity", "boat traffic","fire frequency",
+                "* fragmentation$", "* poverty$", "footprint",
+                "accessibility", "cohesion", "activeness","contagion",
+                "dynamics","heterogeneity","value","* ratio$",
+                "impact","* level$", "acidification"," activity ",
+                "pressure","capacity","withdrawal"," rate$"," PCA",
+                "gross domestic","effort","financial returns",
+                "human land transformation","land use change",
+                "wealth","pastures change yr1900-2005","annual daily",
+                "pesticide application rate kg km2","forest loss 10yr mean",
+                "harvest interannual SD","^land cover diversity$",
+                "agricultural modification","reservoir capacities ",
+                "imperviousness","clumpiness","disturbance geomorphological",
+                "risk","diffusion","change","household movement",
+                "interspersion","diversity","evenness","richness",
+                "transformation","integrity","probability","velocity",
+                "contrast","connectivity","productivity","noise"
+                )
+
+# search and append
+  preds.list.shorter$data_type <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                        'index', preds.list.shorter$data_type)
+  
+# inspect (note NA's remaining)
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$data_type))
+```
+
+### Predictors referring to size
+
+```{r type_size}
+# make list of search terms
+  cat_list <- c("size","length","* m$","height","* ha$","hectares",
+                "surface area$","area change","* area$","area-weighted mean",
+                "area-weighted-mean","* m2$","DBH","width"
+                )
+
+# search and append
+  preds.list.shorter$data_type <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                        'size', preds.list.shorter$data_type)
+  
+# inspect (note NA's remaining)
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$data_type))
+```
+
+### Predictors that are descriptive 
+
+Descriptive refers to e.g. presence/absence, 1/0s, distribution, types, areas, status or state of a feature or category. These are typically categorical data types.
+
+```{r type_descriptive}
+# make list of search terms
+  cat_list <- c("presence","absence","type*","units","* areas$", "class",
+                "* edges","undisturbed","disturbed forest$","sites$",
+                "*conventional$","status",
+                "^parks$"," reserves","biome","anthropogenic land",
+                "arable and farming lands","gyrate$","^vineyards$",
+                "mixed","land-use","station","^buildings$"," crops$",
+                "human-dominated landscape","^highways$","filter",
+                " disturbance$"," disturbance ","saline",
+                " crops$","forest management approaches","forest non-forest",
+                "human settlements","agricultural areas heterogeneous",
+                "agricultural areas intensive","agricultural areas natural",
+                "built-up subbasin","arable and farming lands","built-up upstream",
+                "plantations","systems","ownership"," groves$","diked",
+                "excavated","walls s*","wasteland","^town$","^tracks$","^trails$",
+                "^shipwrecks$","advisor*","^roads$","verge"," winter","^railways$",
+                "^roads main$","^roads primary$","^roads secondary$",
+                "recent burn","^powerlines$","excavated","permanent crops",
+                "restricted","^mines$","mines historic","artificial surfaces",
+                "residual"," open low","nongrazing","human influence and ",
+                "distribution","registration","^pastures$","^row_crops$",
+                "land use/land cover","land use historic","vegetation$",
+                "Native American land","*passable stream barrier",
+                "hydrocarbons high","hydrocarbons low","developed open space",
+                "historical yr1900","scenic locations","seismic lines","^arable land$",
+                "^oil gas pipeline$","developed areas roads and deciduous woodland",
+                "crops fruit tree","cropland and grassland","cropland and pastures",
+                "crops dry herbaceous present absent","scenic locations","* trails$",
+                "* pipelines$","* cutlines$","* well pads$","^villages$","* rainfed$",
+                "^landscape condition$","* slums$","cut-block features","state name",
+                "* abandoned$", "* abandoned_areas","* woody$","* greenhouses$",
+                "tire storage depots","forest harvested","needs unmet","* mosaic$",
+                "land use previous year","country boundary","* green space$",
+                "agricultural areas 500m radius","agricultural areas 10m radius",
+                "latitude","longitude"
+                )
+
+# search and append
+  preds.list.shorter$data_type <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                        'descriptive', preds.list.shorter$data_type)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$data_type))
+```
+
+### Predictors relating to distance
+
+```{r type_distance}
+# make list of search terms
+  cat_list <- c("*distance*", "* depth", "* proximity", "* extent", "adjacency")
+
+# search and append
+  preds.list.shorter$data_type <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                        'distance', preds.list.shorter$data_type)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$data_type))
+```
+
+### Predictors using time 
+
+Time refers to e.g. those listing years, or length of time.
+
+```{r type_time}
+# make list of search terms
+  cat_list <- c("year","period"," time","time since","annual days","date","duration",
+                "age class","* age$")
+
+# search and append
+  preds.list.shorter$data_type <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                        'time', preds.list.shorter$data_type)
+  
+# inspect (note NA's remaining)
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$data_type))
+```
+
+### Small manual changes
+
+```{r type_edits}
+# change to density/count
+  cat_list <- c('developed open space percent','artificial surfaces percent',
+                'permanent crops percent','gallons')
+  preds.list.shorter$data_type <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                        'density/count', preds.list.shorter$data_type)
+
+# change to index
+  cat_list <- c('*high-low ratio$','burning frequency','logging frequency',
+                "diversity")
+  preds.list.shorter$data_type <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                        'index', preds.list.shorter$data_type)
+
+# inspect
+  summary(as.factor(preds.list.shorter$data_type))
+```
+
+## Table inspection
+
+Show any remaining NAs, and edit above. It was found that all remaining NAs (after visual inspection) qualify as "descriptive", and are reclassified to this data type.
+
+```{r type_inspect}
+# preview remaining NA's (activate as needed)
+  #preds.list.shorter[is.na(preds.list.shorter$data_type),]
+```
+
+Reclassify remaining NA's to descriptive data type.
+
+```{r type_NAs}
+# preview remaining NA's
+  preds.list.shorter$data_type[is.na(preds.list.shorter$data_type)] <- "descriptive"
+```
+
+Save and get final summary.
+
+```{r type_summary}
+# save
+  write.csv(preds.list.shorter, paste0(data.dir,"predictor_list_summary_SHORT.csv"),
+            row.names = FALSE)
+
+# inspect
+  summary(as.factor(preds.list.shorter$data_type))
+```
+
+## Sorting predictors by category
+
+Add a new column for the categories.
+
+```{r cat_empty}
+preds.list.shorter$category <- NA
+```
+
+### Predictors relating to barriers/access
+
+```{r cat_barriers}
+# make list of search terms
+  cat_list <- c("accessibility", "barrier", "fenc*", "wall",
+                "water flow obstacles","boundary","hedgerows","human access")
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                      'barriers/access', preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors relating to transportation
+
+```{r cat_transportation}
+# make list of search terms
+  cat_list <- c("airport", "railway", "aviation", "traffic","train",
+                "shipping","roads","shipwrecks","ports","tracks",
+                "highway","boat ramp","canal","intersections",
+                "transportation","navigable","linear features",
+                "airstrips","waterway","boat launch","path","transit",
+                "watercourses","ship ","ships ","road to scrub","mooring"
+                )
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                      'transportation', preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors relating to human presence (general)
+
+```{r cat_presence}
+# make list of search terms
+  cat_list <- c("human influence","human activity","human areas",
+                "human footprint","human populated areas",
+                "human population_center","moved in","human use",
+                "anthropogenic biome","anthropogenic land",
+                "human land use","human land transformation",
+                "human features","human-dominated landscape",
+                "anthropogenic","anthrome","anthropic",
+                "human presence","human-dominated")
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                      'human presence', preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors relating to food and agriculture
+
+```{r cat_ag}
+# make list of search terms
+  cat_list <- c("aquaculture","fish","aviculture","winery",
+                "plantation","agricultural","pasture","viticulture",
+                "allotment","arable","cultiva*","cropland","donkey",
+                "crops","horticulture","artichokes","farm","grazing",
+                "cattle","feeding","ruminant","fields","sheep","goat",
+                "yams","harvest","human footprint agricultural","hay",
+                "livestock","groves","poultry","irrigation",
+                "husbandry","vineyards","wheat","platanus","tilled",
+                "agroforestry","field activities","food source type",
+                "horse","irrigated areas","orchards","pastoral",
+                "permanent crop","pig ","ranchos","rangelands","tractors",
+                "seed","crop ","crop damage","fallow","corn","maize",
+                "fertilizer","irrigated","tillage","tree nursery",
+                "rice paddy","rangeland","permanent cultures",
+                "planted pine","plough","meadow","productive lands without trees")
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                      'food/agriculture', preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors relating to pollution
+
+```{r cat_pollution}
+# make list of search terms
+  cat_list <- c("andosol", "toxic", "poison", "pesticide",
+                "hydrocarbon","chlorophyll","light","wastewater",
+                "night light","salinity","runoff","acidification",
+                "brownfield","pollution","pollutant","concentration",
+                "artificial illumination","contaminated","dumping site",
+                "waste dumping","dump","inorganic","rubble","insecticide",
+                "superfund sites","phosphorus total","dissolved")
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                      'pollution', preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors relating to tourism/recreation
+
+```{r cat_tourism}
+# make list of search terms
+  cat_list <- c("bike","garden","trail","ski-resort","campground","golf",
+                "parks","hunting","pet shop","hunter","fishing camp","dog",
+                "recreation","scenic","game guard","ski","artisanal fishing",
+                "tourism","tourist")
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                      'recreation/tourism', preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors relating to energy/raw materials 
+
+Not that this excludes wood products, which were classified under disturbance, since it is more related to deforestation, etc.
+
+```{r cat_energy}
+# make list of search terms
+  cat_list <- c("dams", "electric", "hydropower", "energy","damming",
+                "hydraulic","utility","well pads","clear cut","^wells ",
+                "^wind *","mines","mining","oil gas","oil camp","oil well",
+                "seismic","forest cut","dredging and","pipeline"," cutlines",
+                "transmission lines","powerlines","velocity","withdrawl",
+                "well","reservoir","collection","excavate","extract",
+                "dredging","forest processing","dripline","production forest",
+                "logged forest","surface fuels type"
+                )
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                      'energy/raw materials', preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors relating to socio-economics
+
+```{r cat_socioeconomic}
+# make list of search terms
+  cat_list <- c("financial","gross domestic","property size",
+                "healthcare","household","human population",
+                "poverty","wealth","land value","owner","police",
+                "profession","renters ","working","unemployment",
+                "residents*65","killings","education","65yrs","^residents",
+                "marijuana","opium","community associations","workers",
+                "retired people","water withdrawal","travel time",
+                "income","inhabitants nearest","citizen","land tenure",
+                "land value","state name","basic needs","inhabitant density",
+                "cleared vegetation","commune","communit","industry density",
+                "postal address forwards","^inhabitants"
+                )
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                      'socio-economic', preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors relating to disturbance/fragmentation
+
+```{r cat_disturbance}
+# make list of search terms
+  cat_list <- c("fragmentation","artificial areas","artificial surfaces",
+                "degraded","deforestation"," burn ","forest burns","disturbed",
+                "burnt","direct human pressure","disturbance","forest loss",
+                "removal","habitat loss","perturbation","logging","threat",
+                "avoidance","marine human impact","naturalness","undisturbed",
+                "cut block","cut-block","fire","exotic species","semi-natural",
+                "destroyed","bare ground ","clearcut","forest cut","canopy loss",
+                "bare land","water risk","extirpation","cutovers and burns",
+                "pressure","noise","transformation",
+                "meadow exploited","modified habitat","impact","poaching",
+                "stream crossings","alteration","road-stream density crossings",
+                "human modification")
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                      'disturbance', preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors relating to infrastructure
+
+```{r cat_infrastructure}
+# make list of search terms
+  cat_list <- c("bridges","buildings","town","ditch","drain",
+                "land ownership","bathing","landfill","car wash",
+                "infrastr","built-up","coastline type","apartments",
+                "developed","manmade","street","settlements",
+                "filling distance","easement","gravel","residential area",
+                "wasteland","houses","housing","household density",
+                "cities","communication towers","impervious",
+                "development intensity","construction activities",
+                "industrial sites","military","urban areas","slums",
+                "urban land","urban rural","villages","lawn",
+                "wetlands excavated","dike","urban polygons","universities",
+                "human coast type","polder","sparsely populated areas",
+                "urban center","inundation","abstraction","tower ",
+                "roof sheet","depot","water supply","structures","church",
+                "weir","urban","artificial land","artificial water",
+                "artificial open","artificial flooding","property size",
+                "production of property","commercial units","commercial area",
+                "manufacturer","commercial plant nursery","services",
+                "construction sites","cottage","factory","house distance",
+                "house density","industrial area","development","rural areas",
+                "rural land","residence distance","residences count",
+                "public facility","paved area","navy exercise areas",
+                "settling lagoons","industrial facility")
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                      'infrastructure', preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors relating to management/interventions
+
+```{r cat_management}
+# make list of search terms
+  cat_list <- c("management","managed","protected areas",
+                "reintroduction ","wilderness","first record",
+                "forest distance","forest presence","habitat filter",
+                "Native American","nature reserves","non-hunting","introduced site",
+                "urban forest","regulated areas","introduction locus",
+                "advisories","water ecological status","artificial regeneration",
+                "artificial reef","baiting treatment","research camp",
+                "conservation","regulation","stocking","reserve","protection",
+                "improved grassland","unprotected","tribal land",
+                "introduction","silvicultur","site preparation","scientific",
+                "reforest","ranger station","protected","park security",
+                "marine park","nest box","intensive grasslands",
+                "snare hotspots"
+                )
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                             preds.list.shorter$predictor),
+                                      'management/interventions',
+                                      preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+### Predictors that are ambiguous
+
+```{r cat_ambiguous}
+# make list of search terms
+  cat_list <- c("land cover","land-use other","^land use ","diversity",
+                "herbaceous areas","forested","landscape PCA","intactness",
+                "open areas","wetland types","landscape condition","integrity",
+                "forest yr2050","forest distance","time since land abandonment",
+                "abandoned areas with vegetation","abandoned areas percent",
+                "wildness","forests natural and commercial","burn natural or unnatural",
+                "artificial or natural water","forest non-forest","historic vegetation",
+                "land condition index","unexploited areas","forest stands 15-30yrs",
+                "secondary land","remnant native habitat distance","remnant vegetation",
+                "pond isolation","openness"
+                )
+
+# search and append
+  preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                              preds.list.shorter$predictor),
+                                       'ambiguous',
+                                       preds.list.shorter$category)
+  
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+Show any remaining NAs.
+
+```{r cat_NAs}
+# show NAs
+  preds.list.shorter[is.na(preds.list.shorter$category),]
+```
+
+### Small manual changes
+
+```{r cat_edits}
+# change to disturbance
+  cat_list <- c("deforested","pressure","direct human pressure")
+
+  # search and append
+    preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                                preds.list.shorter$predictor),
+                                        'disturbance',
+                                        preds.list.shorter$category)
+  
+# change to pollution
+  cat_list <- c("night light development index","herbicide pressure")
+
+  # search and append
+    preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                                preds.list.shorter$predictor),
+                                        'pollution',
+                                        preds.list.shorter$category)
+  
+# change to transportation
+  cat_list <- c("aviation structure distance")
+
+  # search and append
+    preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                                preds.list.shorter$predictor),
+                                        'transportation',
+                                        preds.list.shorter$category)  	
+
+# change to management/interventions
+  cat_list <- c("reforest")
+
+  # search and append
+    preds.list.shorter$category <- ifelse(grepl(paste0(cat_list, collapse = "|"),
+                                                preds.list.shorter$predictor),
+                                        'management/interventions',
+                                        preds.list.shorter$category)   
+```
+
+Show any remaining NAs.
+
+```{r cat_NA_check}
+# show NAs
+  preds.list.shorter[is.na(preds.list.shorter$category),]
+```
+
+Save by overwriting previous summary table.
+
+```{r cat_save}
+# save
+  write.csv(preds.list.shorter,
+            paste0(data.dir,"predictor_list_summary_SHORT.csv"),
+            row.names = FALSE)
+
+# inspect
+  options(width = 85) #ensure width
+  summary(as.factor(preds.list.shorter$category))
+```
+
+# Nested pie chart of predictor use
+
+Next, we summarize data and create pie charts with the following three layers:
+
+- Inner pie: data types
+- 1st outer: categories
+- 2nd outer: sum of unique articles per predictor
+
+### Make summaries and labels for each pie layer
+
+**Inner pie: data type**
+
+```{r pie_type}
+# Make a summary of each data type for the inner pie
+  type_totals = ddply(preds.list.shorter,
+                      .(data_type), summarize, count=length(data_type))
+
+# show here
+  kableExtra::kbl(type_totals,booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+```{r pie_type_labs}
+# change labels for proper fitting
+  type_totals$labs <- type_totals$data_type
+  type_totals$labs <- as.factor(type_totals$labs)
+  levels(type_totals$labs)[1] <- "density/count      "
+  levels(type_totals$labs)[2] <- "descriptive"
+  levels(type_totals$labs)[3] <- "\n       distance"
+  levels(type_totals$labs)[4] <- "\nindex"
+  levels(type_totals$labs)[5] <- "      size"
+  levels(type_totals$labs)[6] <- "      time"
+
+# change labels for proper fitting
+  type_totals$numlabs <- type_totals$count
+  #type_totals$numlabs <- as.factor(type_totals$numlabs)
+  type_totals$numlabs[1] <- paste0("                ",type_totals$numlabs[1])
+  type_totals$numlabs[2] <- paste0("              ",type_totals$numlabs[2])
+  type_totals$numlabs[3] <- paste0("\n\n",type_totals$numlabs[3])
+  type_totals$numlabs[4] <- paste0("\n\n\n",type_totals$numlabs[4])
+  type_totals$numlabs[5] <- paste0("\n\n",type_totals$numlabs[5])
+  type_totals$numlabs[6] <- paste0("\n\n",type_totals$numlabs[6])
+  
+# show here
+  options(width = 85) #ensure width
+  type_totals
+```
+
+**1st outer pie: predictor categories**
+
+```{r pie_cat}
+# Make a summary of each category for 1st outer pie
+  cat_totals = ddply(preds.list.shorter,
+                     .(data_type,category), summarize, count=length(category))
+  
+# show here
+  kableExtra::kbl(cat_totals,booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+```{r pie_cat_labs}
+# change labels for count
+# (we are removing labels for any predictors <=9 for sake of space)
+  cat_totals$labs <- cat_totals$count
+  cat_totals$labs[cat_totals$labs<=9] <- '' # make blank
+  
+# change labels for legend
+  cat_totals$legend <- cat_totals$category
+  cat_totals$legend <- as.factor(cat_totals$legend)
+
+# Sort frequency and assign colors 
+  freqs <- unique(preds.list.shorter$count)[order(unique(preds.list.shorter$count))]
+  require(classInt)
+  col_ints <- classIntervals(preds.list.shorter$count, 10, style = "jenks")
+  
+# add color (colorblind-friendly)
+  cols <- colorRampPalette(c('#C2E3D2','#B5DDD8','#A8D8DC','#9BD2E1','#8DCBE4',
+                             '#7BBCE7','#7EB2E4','#88A5DD','#9398D2','#9D7DB2'))
+  cols <- cols(10)
+  #plot(rep(1,10),col=cols,pch=19,cex=3) # activate to inspect color palette
+  
+# append matching colors for each interval
+  new_cols <- findColours(col_ints, cols)
+  preds.list.shorter$cols <- new_cols
+```
+
+**2nd outer pie: sum of unique articles per predictor**
+
+```{r pie_sums}
+# Sort by predictor, category and number of unique articles for 3rd outer pie
+  pred_totals = ddply(preds.list.shorter,
+                     .(data_type,category,predictor), summarize,
+                     count=count, hex_col=cols, ones=1)
+
+# sort in order of frequency
+  pred_totals <- arrange(pred_totals,data_type,category,desc(count))
+  
+# preview here
+  head(pred_totals)
+```
+
+### Pie chart
+
+Using a custom pie function, acquired from a stackoverflow help page (<https://stackoverflow.com/questions/25880110/r-put-labels-inside-pie-chart>):
+
+```{r multi_pie_3, include=FALSE, eval=TRUE, results='hide', warning=FALSE}
+# create a new pie function to save overwriting original
+  #body(pie)
+  newpie <- pie
+  newpie2 <- pie
+  
+# Tweak the label positions - changed 1.1 to 0.7
+# also commented out the lines function, so small lines next to labels are not plotted
+  newlbs <- quote(if (!is.na(lab) && nzchar(lab)) {
+                     #lines(c(1, -0.7) * P$x, c(1, 0.7) * P$y)
+                     # text(0.5 * P$x, 0.6 * P$y, labels[i], xpd = TRUE, 
+                     #              adj = ifelse(P$x < 0, 1, 0), ...)
+                      text(0.4 * P$x, 0.55 * P$y, labels[i], xpd = TRUE, 
+                                       adj = ifelse(P$x < 0, 1, 0), ...)
+  })
+
+  newlbs2 <- quote(if (!is.na(lab) && nzchar(lab)) {
+                     #lines(c(1, -0.7) * P$x, c(1, 0.7) * P$y)
+                     #text(.9 * P$x, .9 * P$y, labels[i], xpd = TRUE, 
+                     # text(.9 * P$x, .9 * P$y, labels[i], xpd = TRUE,
+                     #                    adj = ifelse(P$x < 0, 1, 0), ...)
+                     text(.9 * P$x, .9 * P$y, labels[i], xpd = TRUE,
+                                       adj = ifelse(P$x < 0, 1, 0), ...)
+  })
+
+# add in the new lines of code - trial and error found the right position
+  body(newpie)[[22]][[4]][[7]] <- newlbs
+  body(newpie2)[[22]][[4]][[7]] <- newlbs2
+  #newpie(f)
+```
+
+Then we use these functions to make a pie.
+
+```{r pie_fig}
+# Make a 3-level pie
+  #' x      numeric vector for each slice
+  #' group  vector identifying the group for each slice
+  #' labels vector of labels for individual slices
+  #' col    colors for each group
+  #' radius radius for inner and outer pie (usually in [0,1])
+  # png(paste0(image.dir,"predictor_pie_RAW.png"),
+  #     height=10,width=14,units='in',res=600)
+  svg(paste0(image.dir,"predictor_pie_RAW.svg"),
+      height=10,width=14)
+  plot.new()
+    { #white outlines for pies
+      par(new = TRUE)
+      pie(pred_totals$ones, border = FALSE, radius = 1,
+          col = pred_totals$hex_col, #edges = 10,
+          labels = NA)
+      
+      par(new = TRUE)
+      newpie2(cat_totals$count, border = "white", radius = 1,
+          col = NA,
+          labels = NA)      
+      
+      par(new = TRUE)
+      newpie2(cat_totals$count, border = "white", radius = .8,
+          #colorblind-friendly
+          col=c('#777777','#0077BB','#88CCEE','#44AA99','#117733','#999933',
+                '#DDCC77','#EE7733','#FFAABB','#882255','#AA4499','#332288'),
+          labels = cat_totals$labs, cex=0.8)
+      
+      # fills of each pie
+      par(new = TRUE)
+      newpie2(cat_totals$count,border = NA, radius = .8,
+          col = NA,
+          labels = cat_totals$labs, cex=0.8)
+      
+      par(new = TRUE)
+      newpie(type_totals$count, border = "white", radius = .4,
+          col='#DDD8EF',
+          labels = type_totals$labs)
+      
+      par(new = TRUE)
+      newpie(type_totals$count, border = NA, radius = .4,
+          col=NA,
+          labels = type_totals$numlabs)
+
+      legend(x=1.03,y=-0.22,legend=unique(cat_totals$legend),
+             bty="n",border='white',
+             fill=c('#777777','#0077BB','#88CCEE','#44AA99','#117733','#999933',
+                '#DDCC77','#EE7733','#FFAABB','#882255','#AA4499','#332288'),
+             title='predictor category\n(n=predictors per data type)')
+      
+      legend(x=1.03,y=0,legend='data type\n(n=total predictors)',
+             fill='#DDD8EF', border = 'white', bty="n")
+      
+      gradientLegend(valRange=col_ints$brks,length = .3,
+                     n.seg = col_ints$brks, side=1, color=cols,
+                     title='number of articles using predictor',
+                     border.col = NA, tick.col = 'black')
+      
+      text(x=1.26,y=-1.02,
+           labels = 'number of articles using each predictor')
+    }
+    dev.off()       
+```
+
+Some manual edits were done to move labels for better visibility using Inkscape. The final image is uploaded here:
+
+```{r pie_fig_png, eval=TRUE, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
+## THIS IS RUN IN THE BACKGROUND TO SHOW THE PNG VERSION OF THE RAW PIE
+## SAME SCRIPT AS ABOVE, WITH PNG COMMAND ACTIVATED
+
+# Make a 3-level pie
+  #' x      numeric vector for each slice
+  #' group  vector identifying the group for each slice
+  #' labels vector of labels for individual slices
+  #' col    colors for each group
+  #' radius radius for inner and outer pie (usually in [0,1])
+  png(paste0(image.dir,"predictor_pie_RAW.png"),
+      height=10,width=14,units='in',res=600)
+  # svg(paste0(image.dir,"predictor_pie_RAW.svg"),
+  #     height=10,width=14)
+  plot.new()
+    { #white outlines for pies
+      par(new = TRUE)
+      pie(pred_totals$ones, border = FALSE, radius = 1,
+          col = pred_totals$hex_col, #edges = 10,
+          labels = NA)
+      
+      par(new = TRUE)
+      newpie2(cat_totals$count, border = "white", radius = 1,
+          col = NA,
+          labels = NA)      
+      
+      par(new = TRUE)
+      newpie2(cat_totals$count, border = "white", radius = .8,
+          #colorblind-friendly
+          col=c('#777777','#0077BB','#88CCEE','#44AA99','#117733','#999933',
+                '#DDCC77','#EE7733','#FFAABB','#882255','#AA4499','#332288'),
+          labels = cat_totals$labs, cex=0.8)
+      
+      # fills of each pie
+      par(new = TRUE)
+      newpie2(cat_totals$count,border = NA, radius = .8,
+          col = NA,
+          labels = cat_totals$labs, cex=0.8)
+      
+      par(new = TRUE)
+      newpie(type_totals$count, border = "white", radius = .4,
+          col='#DDD8EF',
+          labels = type_totals$labs)
+      
+      par(new = TRUE)
+      newpie(type_totals$count, border = NA, radius = .4,
+          col=NA,
+          labels = type_totals$numlabs)
+
+      legend(x=1.03,y=-0.22,legend=unique(cat_totals$legend),
+             bty="n",border='white',
+             fill=c('#777777','#0077BB','#88CCEE','#44AA99','#117733','#999933',
+                '#DDCC77','#EE7733','#FFAABB','#882255','#AA4499','#332288'),
+             title='predictor category\n(n=predictors per data type)')
+      
+      legend(x=1.03,y=0,legend='data type\n(n=total predictors)',
+             fill='#DDD8EF', border = 'white', bty="n")
+      
+      gradientLegend(valRange=col_ints$brks,length = .3,
+                     n.seg = col_ints$brks, side=1, color=cols,
+                     title='number of articles using predictor',
+                     border.col = NA, tick.col = 'black')
+      
+      text(x=1.26,y=-1.02,
+           labels = 'number of articles using each predictor')
+    }
+    dev.off()   
+```
+
+![](./images/predictor_pie_INK.png)
+
+# Comparing predictor use by context (study focus and taxa)
+
+It's possible that the use of these different predictors/categories is context-specific. We can assess that by appending the lists from the alluvial plots with this updated predictor list and making bar plots.
+
+## Combining dataframes
+
+First, we combine the taxa/domain/focus tables and preview the new dataframe.
+
+```{r domtax_df}
+# first, rename some columns
+  names(domtaxfoc.df)[names(domtaxfoc.df) == 'taxon_group'] <- 'taxa'
+  names(domtaxfoc.df)[names(domtaxfoc.df) == 'count'] <- 'count_studies'
+  
+# preview
+  head(domtaxfoc.df)
+```
+
+Show some of the predictor list.
+
+```{r pred_list_preview}
+# preview
+  options(width = 85) # ensure width
+  head(preds.list.shorter)
+```
+
+Lengthen the predictor and taxa lists, where there's a new row per semi-colon-separated paper.
+
+```{r pred_lengthen, warning=FALSE, results='hold'}
+# lengthen predictor list
+  # mutate data, with repeated rows of papers and predictors
+    preds.list.long <- preds.list.shorter %>% 
+                        rownames_to_column() %>% 
+                        mutate(uid = strsplit(papers, "; ")) %>% 
+                        unnest %>%
+                        group_by(uid) 
+    
+  # double-check count of unique papers (should match PRISMA)
+    paste("number of unique papers:",
+          summarise(preds.list.long,count = length(unique(uid))))
+  
+  
+# lengthen taxa/domain/focus list
+  # mutate data, with repeated rows of papers per taxa and domain
+    dotf.list.long <- domtaxfoc.df %>% 
+                        rownames_to_column() %>% 
+                        mutate(uid = strsplit(papers, "; ")) %>% 
+                        unnest %>%
+                        group_by(uid) 
+    
+  # double-check count of unique papers (should match PRISMA)
+    paste("number of unique papers:",
+          summarise(dotf.list.long,count = length(unique(uid))))
+```
+
+Next, join the two dataframes by paper ID (UID). This list will be longer than the original `preds.list.long` since there are multiples of taxa and domains per paper in `domtaxfoc.df`.
+
+```{r pred_join}
+# left join
+  prdotf.list.long <- left_join(preds.list.long,dotf.list.long, by='uid')
+```
+
+We **save this list** for use later in the synthesis of edited data fields (**see Part IV and V).
+
+```{r pred_dtf_long}
+# save as a CSV
+  write.csv(prdotf.list.long ,paste0(data.dir,"predictor_domain_taxa_focus_long.csv"),
+            row.names = FALSE)
+```
+
+
+We then shorten this list to make it unique to only the predictors per paper UID, for us to target the focus of each study. The length is expected to be the same as the first `predictor.list.long` that we made. Then, we will make a second list, where it will be unique to the predictors per taxa per paper ID. This table will be as long as there are taxa.
+
+```{r pred_subsets}
+# predictor list for study focus
+  foc.preds.list <- ddply(prdotf.list.long,.(study_focus,category,uid,predictor),
+                          summarize,
+                          count_studies=length(predictor))
+
+# predictor list for focus
+  tax.preds.list <- ddply(prdotf.list.long,.(taxa,category,uid,predictor),
+                          summarize,
+                          count_studies=length(predictor))
+```
+
+We summarize these tables again, getting a count of predictors per category per study focus, and count for predictors per category per taxa. For the former, the count should sum to the total number of articles using all the predictors (the sum of the outer pie from above). For the latter, the sum would be much larger, and should roughly equal the number of taxa studied per article, multiplied by the sum of the outer pie (the exact number may differ by domain). We will also calculate the relative percents.
+
+```{r pred_foc_sums}
+# summaries for study focus
+  # get counts
+    foc.preds.list2 <- ddply(foc.preds.list,.(study_focus,category),
+                            summarize,
+                            count=length(predictor))
+  # get total, join, and calculate percent
+    foc.preds.tot <-  ddply(foc.preds.list2,.(study_focus),
+                            summarize,
+                            total=sum(count))
+    foc.preds.list2 <- left_join(foc.preds.list2, foc.preds.tot, by='study_focus')
+    foc.preds.list2$perc <- foc.preds.list2$count/foc.preds.list2$total
+    
+# save table
+  write.csv(foc.preds.list2,
+            paste0(data.dir,"focus_predictor_percent_list.csv"),
+            row.names = FALSE)
+    
+# display here
+  kableExtra::kbl(foc.preds.list2,booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header")) %>% 
+    column_spec(1, width="10em") %>%
+    column_spec(2, width="10em") %>%
+    column_spec(3, width="5em") %>% 
+    column_spec(4, width="5em") %>% 
+    column_spec(5, width="5em") 
+```
+
+```{r pred_tax_sums}
+# summaries for taxa
+  # get counts
+    tax.preds.list2 <- ddply(tax.preds.list,.(taxa,category),
+                            summarize,
+                            count=length(predictor))
+  # get totals, join, and calculate percent
+    tax.preds.tot <-  ddply(tax.preds.list2,.(taxa),
+                            summarize,
+                            total=sum(count))
+    tax.preds.list2 <- left_join(tax.preds.list2, tax.preds.tot, by='taxa')
+    tax.preds.list2$perc <- tax.preds.list2$count/tax.preds.list2$total
+    
+# save table
+  write.csv(tax.preds.list2,
+            paste0(data.dir,"taxa_predictor_percent_list.csv"),
+            row.names = FALSE)
+    
+# display here
+  kableExtra::kbl(tax.preds.list2,booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header")) %>% 
+    column_spec(1, width="10em") %>%
+    column_spec(2, width="10em") %>%
+    column_spec(3, width="5em") %>% 
+    column_spec(4, width="5em") %>% 
+    column_spec(5, width="5em") 
+```
+
+## Visualizing predictor use against study context
+
+### Predictor by study focus
+
+```{r pred_foc_fig, fig.width=7.5, fig.height=4}
+# study focus/category plot
+  foc_plt <- ggplot(foc.preds.list) +
+                aes(x=study_focus, fill=category) +
+                geom_bar(position = 'fill', width = .95) +
+                ylim(0,1.1) + 
+                xlab('') + ylab('') +
+                scale_y_continuous(breaks = seq(0,1,.1)) +
+                scale_x_discrete(labels=c('conflict/\ncollisions','conservation',
+                                          'disturbance/\nhabitat change','exploratory',
+                                          'food/\neconomics','human\nhealth/safety',
+                                          'invasions','reintroduction/\nrestoration')) +
+                scale_fill_manual("",
+                                  values = c('#777777','#0077BB','#88CCEE','#44AA99',
+                                             '#117733','#999933','#DDCC77','#EE7733',
+                                             '#FFAABB','#882255','#AA4499','#332288')) +
+                theme_classic() +
+                theme(legend.position = 'none',
+                      axis.text.x = element_text(size=rel(1.09))) +
+                geom_text(aes(study_focus, 1.03,
+                              label = total, fill=NULL), data = foc.preds.tot) +
+                labs(tag=' sum of predictors across articles:') +
+                theme(plot.tag.position = c(.2,.94),plot.tag = element_text(size=10)) +
+                ggtitle('Study focus')
+```
+
+### Predictor use by taxa
+
+```{r pred_tax_fig, fig.width=7.5, fig.height=4}
+# study taxa/category plot
+  tax_plt <- ggplot(tax.preds.list) +
+                aes(x=taxa, fill=category) +
+                geom_bar(position = 'fill', width = .95) +
+                ylim(0,1.1) +
+                xlab('') + ylab('') + 
+                scale_y_continuous(breaks = seq(0,1,.1)) +
+                scale_x_discrete(labels=c("amphibians","birds","fish","herbaceous\nplants",
+                                          "invertebrates","mammals","micro-\norganisms",
+                                          "reptiles","trees/shrubs")) +
+                scale_fill_manual("predictor category",
+                                  values = c('#777777','#0077BB','#88CCEE','#44AA99',
+                                             '#117733','#999933','#DDCC77','#EE7733',
+                                             '#FFAABB','#882255','#AA4499','#332288')) +
+                theme_classic() +
+                theme(legend.position = 'none',
+                      axis.text.x = element_text(size=rel(1.09))) +
+                geom_text(aes(taxa, 1.03,
+                              label = total, fill=NULL), data = tax.preds.tot) +
+                labs(tag=' sum of predictors across articles:') +
+                theme(plot.tag.position = c(.2,.94),plot.tag = element_text(size=10)) +
+                ggtitle('Taxa')
+```
+
+```{r pred_leg_fig, fig.width=6,fig.height=8}
+# legend only
+  leg <- ggplot(tax.preds.list) +
+            aes(x=taxa, fill=category) +
+            geom_bar(position = 'fill') +
+            scale_fill_manual('',
+                              values = c('#777777','#0077BB','#88CCEE','#44AA99',
+                                         '#117733','#999933','#DDCC77','#EE7733',
+                                         '#FFAABB','#882255','#AA4499','#332288')) +
+            theme(legend.position = 'bottom')
+
+# extract legend for multi-plot
+  require(ggpubr)
+  leg <- ggpubr::get_legend(leg)
+  
+# preview here
+  #as_ggplot(leg)
+```
+
+## Multiplot 
+
+Put all plots into a 2x2 grid.
+
+```{r pred_multi_fig, fig.width=7.5,fig.height=8}
+require(cowplot)
+
+# multiplot
+  cow_AB <- plot_grid(foc_plt + ylab('') + xlab(''),
+                      tax_plt + ylab('') + xlab(''),
+            ncol = 1,
+            rel_heights = c(1,1),# A negative rel_height shrinks space between elements
+            axis='bt',
+            label_y='proportion of category use')
+            #label_size = 18,
+            #label_fontfamily = "sans")
+  # add legend
+    cow_AB <- plot_grid(cow_AB, leg, ncol = 1, rel_heights = c(1, .1),rel_widths = c(1,1))
+  # add y-axis label
+    cow_AB <- cow_AB +
+              theme(plot.margin = unit(c(.1,.1,.2,.1), "cm")) +
+              draw_label("relative proportion of categories",
+                         x=-.01, y=0.5, vjust= 1.5, angle=90)
+
+# save
+  ggsave(plot=cow_AB, filename = paste0(image.dir,'predictor_category_use2.png'),
+         height = 8, width = 7.5, units = 'in', dpi = 600)
+  ggsave(plot=cow_AB, filename = paste0(image.dir,'predictor_category_use2.svg'),
+         height = 8, width = 7.5, units = 'in')
+  
+# show here
+  cow_AB
+```
+
+# Understanding ambiguous predictor use
+
+Next, we investigate the trends in usage of ambiguous predictors.
+
+Get total count of articles using ambiguous predictors.
+
+```{r amb_table, warning=FALSE}
+# subset ambiguous predictors
+  amb_only <- preds.list.shorter[preds.list.shorter$category=='ambiguous',]
+
+# get count of unique papers using ambiguous predictors
+  amb_only$papers2 = as.character(amb_only$papers)
+
+# mutate data, with repeated rows of papers and predictors
+  amb_only_long <- amb_only %>% 
+                      rownames_to_column() %>% 
+                      mutate(string = strsplit(papers2, "; ")) %>% 
+                      unnest %>%
+                      group_by(string) 
+  
+# get vector list of unique papers (for matching later)
+  amb_only_papers <- summarise(amb_only_long,
+                               uid = unique(string))
+
+# save list
+  write.csv(amb_only_papers,
+            paste0(data.dir,"ambiguous_predictor_paper_list.csv"),
+            row.names = FALSE)
+  
+# get count of unique papers
+  paste(summarise(amb_only_long,count = length(unique(string))),
+        "papers use ambiguous predictors")
+```
+
+Compare total number of ambiguous predictors used by each article with the total number of human predictors they used in their SDMs.
+
+```{r amb_sums}
+# get table of predictors
+  # Pull up original table and subset
+    preds.df <- data.frame(subset(yes.df,
+                                  select = c("uid","domain","num_env_preds","num_hum_preds")))
+  
+  # calculate total predictors across studies (this will help include past-only papers)
+    preds.df$total_preds <- as.integer(preds.df$num_env_preds) + as.integer(preds.df$num_hum_preds)
+    
+  # set up factors
+    preds.df$domain <- as.factor(preds.df$domain)
+    preds.df$domain <- factor(preds.df$domain, levels = c("terrestrial", "freshwater", "marine"))  
+  
+# get count of ambiguous predictors per paper 
+  amb.df <- ddply(amb_only_long,.(string), summarize,amb_count=length(predictor))
+  amb.df <- data.frame(uid = amb.df$string, amb_count = amb.df$amb_count)
+
+# extract rows matching paper IDs
+  hum_preds_cts <- data.frame(uid = as.character(preds.df$uid),
+                              hum_count = as.integer(preds.df$num_hum_preds))
+  amb.df <- left_join(amb.df,hum_preds_cts, by='uid')
+
+# count instances where amb_count >= hum_count ('>' is OK since diff time frames here)
+  paste(nrow(amb.df[amb.df$amb_count >= amb.df$hum_count,]),
+        "papers use only ambiguous predictors as the human predictors in their SDMs")
+```
+
+Save
+
+```{r amb_table_save}
+# save list
+  write.csv(amb.df,
+            paste0(data.dir,"ambiguous_predictor_dataframe.csv"),
+            row.names = FALSE)
+```
+
+# Understanding buffered predictors
+
+```{r buff_sums}
+# Make a subset
+  buffer.preds <- preds.list.shorter[grepl('radius',preds.list.shorter$predictor)|
+                                       grepl('buffer',preds.list.shorter$predictor),]
+
+# lengthen list
+  buffer.preds <- separate_rows(buffer.preds, papers, sep="; ",convert = TRUE)
+
+# total number of articles using buffered predictors
+  length(unique(buffer.preds$papers))
+  
+# total number of predictors
+  length(unique(buffer.preds$predictor))
+  
+# get summaries per predictor category
+  buffer.sum <- ddply(buffer.preds,.(category),
+                     summarize,
+                   # get number of papers using buffers per category
+                     count_preds = length(unique(predictor)),
+                    # list of taxa for each predictor
+                     count_papers = length(unique(papers)),
+                    # list of study focus for each predictor
+                     predictor = paste(unique(predictor),collapse="; ")
+                   )
+
+# save table
+  write.csv(buffer.sum,
+            paste0(data.dir,"buffer_predictor_dataframe.csv"),
+            row.names = FALSE)
+  
+# show summary (only first three columns)
+  kableExtra::kbl(buffer.sum[,1:3],booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+# Article time frames compared to human predictor time frames
+
+```{r timeframe_list}
+# Create a subset of relevant studies with only the paper ID and the study time frames
+  time.df <- subset(yes.df, select = c("uid", "time", "hum_time"))
+
+# Ensure that duplicates are removed (uid is duplicated for multiple domains)
+  colnm <- c("uid", "time","hum_time")
+  time.df[colnm] <- lapply(time.df[colnm], factor)
+  time.df <- time.df[!duplicated(time.df[,c("uid")]),]
+
+# Calculate (note that this is number of papers, not studies)
+  time.list <- ddply(time.df, .(time, hum_time), summarize,
+                              count=length(hum_time))
+  
+# Show table
+  kableExtra::kbl(time.list,booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+A good number of papers have a mismatch in time frames. We can show the mismatch more clearly by doing another summary.
+
+```{r time_mismatch, results='hold'}
+# extract past papers only
+  time.list_past <- time.list[grepl('past',time.list$time),]
+  
+# extract past/present-future papers only
+  time.list_futr <- time.list[grepl('future',time.list$time),]
+  
+# add indicator for mismatches
+  time.list_past <- ddply(time.list_past, .(time, hum_time, count), summarize,
+                                          indicator=sum(hum_time != time))
+  time.list_futr <- ddply(time.list_futr, .(time, hum_time, count), summarize,
+                                          indicator=sum(hum_time != time))
+  time.list_cts <- ddply(time.list, .(time, hum_time, count), summarize,
+                                          indicator=sum(hum_time != time))
+  
+# get counts
+  paste('studies with past mismatches:',
+         sum(time.list_past$count[time.list_past$indicator==1]));
+  paste('studies with future mismatches:',  
+         sum(time.list_futr$count[time.list_futr$indicator==1]));
+  paste('total mismatches:',
+        sum(time.list_cts$count[time.list_cts$indicator==1]))
+```
+
+Note that the sum of past and future mismatches has overlap due to e.g. "past-present-future" studies.
+
+## Time frame chord diagram
+
+Next, we make a cord diagram showing the study time frames compared to the human predictor time frames. This is to get a better visualization of the proportion of matches and mismatches across studies and across the time frame varieties.
+
+```{r timeframe_fig, fig.height=6, fig.width=5, message=FALSE, warning=FALSE}
+# remove "only" from time.list
+  time.list <- data.frame(lapply(time.list, function(x) {gsub("-only","", x)}))
+  
+# change factor levels
+  time.list$time <- factor(time.list$time,
+                           levels = c("past",
+                                      "past-present",
+                                      "past-present-future",
+                                      "past-future",
+                                      "present",
+                                      "present-past",
+                                      "present-past-future",
+                                      "present-future"
+                                      ))
+  
+  time.list$hum_time <- factor(time.list$hum_time,
+                               levels = c("past",
+                                          "past-present",
+                                          "past-present-future",
+                                          "past-future",
+                                          "present",
+                                          "present-past",
+                                          "present-future"
+                                          ))
+  
+# revert to numeric
+  time.list$count <- as.numeric(time.list$count)
+  
+# make labels (optional)
+  stu.lab <- ddply(time.list, .(time), summarize,
+                              time_lab=paste0(time,' (',sum(count),')'))
+  hum.lab <- ddply(time.list, .(hum_time), summarize,
+                              hum_lab=paste0(hum_time,' (',sum(count),')'))  
+  
+# join labels to table
+  time.list <- left_join(time.list,stu.lab,by='time')
+  time.list <- left_join(time.list,hum.lab,by='hum_time')
+  time.list <- distinct(time.list, .keep_all = TRUE) # ensure no repeated rows
+
+# copy time.list
+  time.list2 <- time.list
+
+# change values to log + 1 scale for easier visualization
+  time.list2$count <- log(time.list$count + 1)
+  
+  time.col <- c('#F7F056','#90C987','#E8601C','#4EB265',
+                '#5289C7','#D1BBD7','#882E72','#DC050C') 
+  
+  
+  svg(paste0(image.dir,"time_frames_circle_1-30-2024.svg"),
+      height=8,width=8)
+  plot.new()
+  # base chord diagram
+    chordDiagram(
+      x = time.list2, 
+      grid.col = time.col,
+      link.border = TRUE,
+      transparency = 0.2,
+      directional = 1,
+      direction.type = c("arrows", "diffHeight"), 
+      diffHeight  = -0.04,
+      keep.diagonal = TRUE,
+      annotationTrack = "grid", 
+      annotationTrackHeight = c(0.05, 0.1),
+      link.arr.type = "big.arrow", 
+      link.sort = TRUE, 
+      link.largest.ontop = TRUE)
+  
+  # # add text and axis (activate to check)
+  #   circos.trackPlotRegion(
+  #     track.index = 1, 
+  #     bg.border = NA, 
+  #     panel.fun = function(x, y) {
+  #       
+  #       xlim = get.cell.meta.data("xlim")
+  #       sector.index = get.cell.meta.data("sector.index")
+  #       
+  #       # # Add names to the sector 
+  #       # circos.text(
+  #       #   x = mean(xlim), 
+  #       #   y = 2, 
+  #       #   labels = sector.index, 
+  #       #   facing = "clockwise",
+  #       #   #facing = "bending", 
+  #       #   cex = 1
+  #       #   )
+  
+   # }
+  #)
+  dev.off()
+  
+# plot again to show here
+  chordDiagram(
+    x = time.list2, 
+    grid.col = time.col,
+    link.border = TRUE,
+    transparency = 0.2,
+    directional = 1,
+    direction.type = c("arrows", "diffHeight"), 
+    diffHeight  = -0.04,
+    keep.diagonal = TRUE,
+    annotationTrack = "grid", 
+    annotationTrackHeight = c(0.05, 0.1),
+    link.arr.type = "big.arrow", 
+    link.sort = TRUE, 
+    link.largest.ontop = TRUE)
+
+```
+
+This figure was exported as an SVG and edited in PowerPoint, with labels done manually.
+
+
+# Assessing predictor use over time
+
+It is possible that human predictor use/selection is also dependent on data availability--especially if modelers are not creating these predictors themselves. Here, we make figures to evaluate when human predictors have begun being used, using first years of publication per predictor as an indicator.
+
+First, we add the years of publication to the predictor dataset (`prdotf.list.long`), matching the paper UID for each predictor.
+
+```{r pred_time_setup}
+# subset yes.df to only UID, study area, scale, and publication year
+  predtime.df <- subset(yes.df, select = c('uid','year'))
+
+# set structure
+  predtime.df$uid <- as.character(predtime.df$uid)
+
+# left-join to predictor list
+  predtime.df <- left_join(prdotf.list.long, predtime.df, by='uid')
+  predtime.df <- distinct(predtime.df, .keep_all = TRUE) # ensure no repeated rows
+
+# subset predictor list
+  predtime.df <- subset(predtime.df,
+                        select = c('category', 'data_type', 'predictor', 'uid', 'year'))
+```
+
+Next, we summarize the predictor list, extracting the first and last years of publication and frequency of unique articles.
+
+```{r pred_time_calc}
+# make summary table
+  predtime.df <- ddply(predtime.df,
+                        .(category, data_type, predictor),
+                        summarize,
+                        # list of papers for each predictor
+                        uid=paste(unique(uid),collapse="; "),
+                        # count number of papers using each predictor
+                        count=as.integer(paste(length(unlist(strsplit(uid,";"))))),
+                        # get first published year of predictor use
+                        first_year=min(year),
+                        # get last published year of predictor use
+                        last_year=max(year)
+                        )
+
+```
+
+
+## Predictor selection over time
+
+Create a bubble plot showing the first and last year of use of a human predictor across the various predictor categories.
+
+```{r pred_bubble, fig.height=6.5,fig.width=8}
+# set colors for predictor categories
+  cat.col <- c('#777777','#0077BB','#88CCEE','#44AA99','#117733','#999933',
+               '#DDCC77','#EE7733','#FFAABB','#882255','#AA4499','#332288')
+  
+# bubble scatterplot
+  bub <- ggplot(predtime.df,
+                aes(x=first_year, y=last_year,
+                    size=count, fill=category)) + 
+                geom_jitter(shape=21, alpha=0.85) +
+                # increasing point sizes for total number of variables used
+                #scale_size_area(name="no. articles",max_size = 10)+
+                scale_size_binned(range = c(1, 10),
+                                  n.breaks = 10,
+                                  breaks = c(1,2,5,10,20,50,100,200,300,400),
+                                  name="no. articles",
+                                  ) +
+                scale_fill_manual(name="domain",values=cat.col,
+                                  guide=FALSE) +
+                xlab("first published year using human predictor")+
+                ylab("most recent published year using human predictor")+
+                theme_bw() +
+                facet_wrap(~category, scales = "fixed") +
+                theme(legend.position = 'bottom')
+
+# save 
+  ggsave(filename=paste0(image.dir,"predictor_time_bubbleplot.png"),
+         plot=bub, height=6.5, width=8, units = 'in', dpi = 600)
+  ggsave(filename=paste0(image.dir,"predictor_time_bubbleplot.svg"),
+         plot=bub, height=6.5, width=8, units = 'in')
+  
+# plot
+  bub
+
+```
+
+For each category, how many predictors have persisted beyond their first year of publication? We can summarize this as a table here.
+
+```{r pred_bub_sums}
+# make summary table
+  predsums.df <- ddply(predtime.df,
+                        .(category),
+                        summarize,
+                        # count persistence
+                        count_once=sum(first_year == last_year),
+                        count_kept=sum(first_year != last_year),
+                        # percent persistence
+                        perc_once=round(count_once/sum(count_kept,count_once),2),
+                        perc_kept=round(count_kept/sum(count_kept,count_once),2)
+                        )
+
+# display here
+  kableExtra::kbl(predsums.df, booktabs=T, longtable=T) %>%
+    kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+It is also possible that the years of use will vary across countries. We visualize this in Part IV.
+
+
+# Save final predictor table, including study context
+
+We also want to add this information to the predictor list table, for use in the supplementary materials of the corresponding article.
+
+```{r pred_tab_export}
+# append years to predictor list
+  years.df <- subset(yes.df, select = c('uid','year'))
+  years.df$uid <- as.character(years.df$uid)
+
+# left-join to predictor list
+  prdotf.list.long <- left_join(prdotf.list.long, years.df, by='uid')
+  prdotf.list.long <- distinct(prdotf.list.long, .keep_all = TRUE) # ensure no repeated rows
+    
+# Get a count of predictors in general
+  preds.list.export <- ddply(prdotf.list.long,
+                            .(category, data_type, predictor, timeframes),
+                            summarize,
+                            # list of taxa for each predictor
+                            taxa=paste(unique(taxa),collapse="; "),
+                            # list of study focus for each predictor
+                            study_focus=paste(unique(study_focus),collapse="; "),
+                            # list of papers for each predictor
+                            uid=paste(unique(uid),collapse="; "),
+                            # count number of papers using each predictor
+                            count=paste(length(unlist(strsplit(uid,";")))),
+                            # get first published year of predictor use
+                            first_year=min(year),
+                            # get last published year of predictor use
+                            last_year=max(year)
+                            )
+
+# save table
+  write.csv(preds.list.export,
+            paste0(data.dir,"predictor_list_summary_FINAL.csv"),
+            row.names = FALSE)
+```
+
+# Save
+
+```{r save}
+# save progress
+  save.image("SDMs_human_lit_review_III.RData")
+```
+
+-------------------------------------------------------
+
+**_THIS IS THE END OF THE SCRIPT._**
+
+**_See "Human Influence in SDMs: Literature Review (Part IV)" for next steps._**
+
+---------------------------------------------------------
