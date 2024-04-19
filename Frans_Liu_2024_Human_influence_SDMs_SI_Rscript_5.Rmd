@@ -111,6 +111,15 @@ Upload the data table from the abstract screening and review, and subset to only
                                 header=T, sep=",")
 ```
 
+```{r load_background, echo=FALSE, eval=TRUE}
+### THIS TAKES 7 HOURS TO RUN, SO PRERUN DATA ARE LOADED HERE ###
+
+# load previously-saved R-data file
+  load("SDMs_human_lit_review_V.RData")
+
+### THIS IS NOT VISIBLE IN THE PRINTED PDF ###
+```
+
 # Classify SDGs across predictors
 
 We use the `text2sdg` package to match predictors with the 17 SDGs. Because this packages normally works with an entire corpus, the analysis is instead done row by row (i.e., per predictor), treating each predictor as a corpus. Row by row, names and sums of SDGs are extracted. Note that this takes at least 9 hours to run.
@@ -343,7 +352,7 @@ Plot summary
 
 We turn these plots into a scatterplot, with the number of predictors related to SDGs on the x-axis, and the number of papers using those predictors on the y-axis.
 
-```{r sdg_plot_scatter} 
+```{r sdg_plot_scatter, fig.height=4, fig.width=6} 
 # make a new dataframe
   sdg_summary <- data.frame(sdg=sdg_only$sdg,
                             num_preds=sdg_only$num_preds,
@@ -360,11 +369,16 @@ We turn these plots into a scatterplot, with the number of predictors related to
   sdg_summary$labs[sdg_summary$sdg=='SDG-14'] <- 'SDG-14'
   sdg_summary$labs[sdg_summary$sdg=='SDG-15'] <- 'SDG-15'
 
+# labels for legend
+  sdg_summary$leg <- paste0('SDG-',1:17)
+  
 # plot
   sdg_pts <- ggplot(sdg_summary,
                     aes(x=num_preds, y=num_papers, color=sdg, label=labs)) +
-                    geom_point(color=sdg_color(x = 1:17), size = 4, guide = FALSE) +
-                    scale_fill_manual(values = sdg_color(x = 1:17)) +
+                    geom_point(size = 4, show.legend = TRUE) +
+                    scale_color_manual(values = sdg_color(x = 1:17),
+                                       name = 'Sustainable Development Goals',
+                                       labels = sdg_summary$leg) +
                     geom_label_repel(aes(label = labs),
                                      box.padding   = 0.35, 
                                      point.padding = 1,
@@ -374,11 +388,15 @@ We turn these plots into a scatterplot, with the number of predictors related to
                                      min.segment.length = 0.1) +
                     ylab('no. articles') + xlab('no. human predictors') +
                     scale_x_continuous(breaks = seq(0,300,50)) +
-                    theme_bw()
+                    theme_bw() +
+                    theme(legend.position=c(.35,.72),
+                          legend.box.background = element_rect(color = "black",
+                                                               size = .5)) +
+                    guides(color = guide_legend(ncol = 4)) 
 
 # save
   ggsave(plot=sdg_pts, filename = paste0(image.dir,'sdg_scatterplot.png'),
-         height = 4, width = 6, units = 'in', dpi = 600)
+         height = 4, width = 6, units = 'in')
   ggsave(plot=sdg_pts, filename = paste0(image.dir,'sdg_scatterplot.svg'),
          height = 4, width = 6, units = 'in')
   
@@ -414,7 +432,7 @@ We add the SDG names and counts to the existing predictor list dataset, for expo
 
 # Save
 
-```{r save]}
+```{r save, eval=FALSE}
 # save progress
   save.image("SDMs_human_lit_review_V.RData")
 ```
