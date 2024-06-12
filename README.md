@@ -69,7 +69,7 @@ Frans, V & Liu, J (2024). Data for 'Gaps and opportunities in modeling human inf
 
 Please cite the original article as follows:
 
-Frans, VF & Liu, J (2024). Gaps and opportunities in modeling human influence on species distributions in the Anthropocene. Nature Ecology & Evolution. [DOI link here]
+Frans, VF & Liu, J (2024). Gaps and opportunities in modeling human influence on species distributions in the Anthropocene. Nature Ecology & Evolution. https://doi.org/10.1038/s41559-024-02435-3
 
 ## Contact
 
